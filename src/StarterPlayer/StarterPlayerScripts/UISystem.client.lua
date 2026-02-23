@@ -386,7 +386,15 @@ function UISystem:UpdateHealth(current, max)
     end
 end
 
-function UISystem:UpdatePhase(phase, timeLeft)
+function UISystem:UpdatePhase(phaseData, timeLeft)
+    -- Handle both table {phase = "..."} and string "..."
+    local phaseName
+    if type(phaseData) == "table" then
+        phaseName = phaseData.phase or "LOBBY"
+    else
+        phaseName = tostring(phaseData)
+    end
+    
     local phaseColors = {
         LOBBY = COLORS.gray,
         BUILDING = COLORS.success,
@@ -394,8 +402,8 @@ function UISystem:UpdatePhase(phase, timeLeft)
         END = COLORS.secondary
     }
     
-    local color = phaseColors[phase] or COLORS.primary
-    uiElements.phaseText.Text = phase .. " PHASE"
+    local color = phaseColors[phaseName] or COLORS.primary
+    uiElements.phaseText.Text = phaseName .. " PHASE"
     uiElements.phaseText.TextColor3 = color
     uiElements.timerText.Text = Utils.FormatTime(timeLeft or 0)
 end
