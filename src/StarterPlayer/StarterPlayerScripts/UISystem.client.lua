@@ -7,8 +7,8 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local Config = require(ReplicatedStorage.Shared.Config)
-local Utils = require(ReplicatedStorage.Shared.Utils)
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 
 local UISystem = {}
 local uiElements = {}

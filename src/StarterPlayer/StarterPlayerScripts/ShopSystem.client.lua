@@ -5,6 +5,7 @@ local TweenService = game:GetService("TweenService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local player = Players.LocalPlayer
+repeat task.wait() until player.Character
 local playerGui = player:WaitForChild("PlayerGui")
 
 local ShopSystem = {}

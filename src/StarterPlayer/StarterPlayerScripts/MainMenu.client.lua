@@ -7,7 +7,7 @@ local TeleportService = game:GetService("TeleportService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local Config = require(ReplicatedStorage.Shared.Config)
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
 local MainMenu = {}
 local uiElements = {}

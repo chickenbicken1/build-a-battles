@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
+repeat task.wait() until player.Character
 local playerGui = player:WaitForChild("PlayerGui")
 
 local CharacterCustomization = {}
