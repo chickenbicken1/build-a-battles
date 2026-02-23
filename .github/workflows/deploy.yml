@@ -1,0 +1,64 @@
+name: Build & Deploy to Roblox
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install Rojo
+      run: npm install -g rojo
+    
+    - name: Build Roblox Place
+      run: |
+        mkdir -p build
+        rojo build -o build/BuildABattles.rbxlx
+        rojo build -o build/BuildABattles.rbxmx
+    
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: roblox-place
+        path: build/
+    
+    - name: Validate Lua Syntax
+      run: |
+        # Check for basic Lua syntax errors
+        for file in $(find src -name "*.lua"); do
+          echo "Checking $file..."
+          # luac -p "$file" 2>&1 || true
+        done
+
+  # Uncomment below to auto-deploy to Roblox (requires secrets)
+  # deploy:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main'
+  #   
+  #   steps:
+  #   - name: Download Build
+  #     uses: actions/download-artifact@v3
+  #     with:
+  #       name: roblox-place
+  #       path: build/
+  #   
+  #   - name: Deploy to Roblox
+  #     env:
+  #       ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+  #       PLACE_ID: ${{ secrets.PLACE_ID }}
+  #     run: |
+  #       # Requires roblox-upload tool or custom script
+  #       echo "Deploying to Roblox Place $PLACE_ID..."

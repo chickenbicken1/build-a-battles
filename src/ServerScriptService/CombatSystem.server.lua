@@ -1,0 +1,191 @@
+-- Build a Battles - Combat System
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+
+local CombatSystem = {}
+local playerHealth = {}
+local combatStarted = false
+
+function CombatSystem:Init()
+    -- Remote Events
+    self.CombatEvent = Instance.new("RemoteEvent")
+    self.CombatEvent.Name = "CombatEvent"
+    self.CombatEvent.Parent = ReplicatedStorage.Remotes
+    
+    self:SetupListeners()
+    print("✅ Combat System Initialized")
+end
+
+function CombatSystem:SetupListeners()
+    -- Handle weapon attacks
+    self.CombatEvent.OnServerEvent:Connect(function(player, action, target, weaponType)
+        if action == "ATTACK" then
+            self:HandleAttack(player, target, weaponType)
+        elseif action == "DAMAGE_BLOCK" then
+            self:DamageBlock(player, target, weaponType)
+        end
+    end)
+    
+    -- Setup player health on join
+    Players.PlayerAdded:Connect(function(player)
+        playerHealth[player.UserId] = Config.COMBAT.MAX_HEALTH
+        
+        player.CharacterAdded:Connect(function(char)
+            playerHealth[player.UserId] = Config.COMBAT.MAX_HEALTH
+            self:SetupCharacter(char, player)
+        end)
+    end)
+end
+
+function CombatSystem:SetupCharacter(character, player)
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.Health = playerHealth[player.UserId]
+    
+    humanoid.HealthChanged:Connect(function(newHealth)
+        playerHealth[player.UserId] = newHealth
+        if newHealth <= 0 then
+            self:HandleDeath(player)
+        end
+    end)
+end
+
+function CombatSystem:HandleAttack(attacker, target, weaponType)
+    if not combatStarted then return end
+    
+    local weapon = Config.COMBAT.WEAPONS[weaponType]
+    if not weapon then return end
+    
+    -- Validate target
+    if target:IsA("Player") then
+        local char = target.Character
+        if char then
+            local humanoid = char:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid:TakeDamage(weapon.damage)
+                
+                -- Visual feedback
+                self:CreateDamageIndicator(target, weapon.damage)
+            end
+        end
+    end
+end
+
+function CombatSystem:DamageBlock(player, block, weaponType)
+    if not combatStarted then return end
+    if block:GetAttribute("Owner") == player.UserId then return end -- Can't break own blocks
+    
+    local weapon = Config.COMBAT.WEAPONS[weaponType]
+    if not weapon then return end
+    
+    local currentHealth = block:GetAttribute("Health")
+    local maxHealth = block:GetAttribute("MaxHealth")
+    local newHealth = currentHealth - weapon.damage
+    
+    block:SetAttribute("Health", newHealth)
+    
+    -- Update health bar
+    local healthBar = block:FindFirstChild("HealthBar")
+    if healthBar then
+        local bar = healthBar:FindFirstChild("Bar")
+        if bar then
+            local percent = math.max(0, newHealth / maxHealth)
+            bar.Size = UDim2.new(percent, 0, 1, 0)
+            
+            -- Color change based on health
+            if percent > 0.5 then
+                bar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+            elseif percent > 0.25 then
+                bar.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+            else
+                bar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+            end
+        end
+    end
+    
+    -- Destroy block if health depleted
+    if newHealth <= 0 then
+        self:DestroyBlock(block)
+    end
+end
+
+function CombatSystem:DestroyBlock(block)
+    -- Particle effect
+    local explosion = Instance.new("Explosion")
+    explosion.Position = block.Position
+    explosion.BlastRadius = 2
+    explosion.BlastPressure = 0 -- No physics push
+    explosion.Parent = workspace
+    
+    -- Debris effect
+    for i = 1, 5 do
+        local debris = Instance.new("Part")
+        debris.Size = Vector3.new(1, 1, 1)
+        debris.Position = block.Position
+        debris.Color = block.Color
+        debris.Material = block.Material
+        debris.Velocity = Vector3.new(
+            math.random(-20, 20),
+            math.random(10, 30),
+            math.random(-20, 20)
+        )
+        debris.Parent = workspace
+        
+        game:GetService("Debris"):AddItem(debris, 2)
+    end
+    
+    block:Destroy()
+end
+
+function CombatSystem:CreateDamageIndicator(target, damage)
+    local char = target.Character
+    if not char then return end
+    
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 100, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = tostring(damage)
+    label.TextColor3 = Color3.fromRGB(255, 0, 0)
+    label.TextScaled = true
+    label.Font = Enum.Font.GothamBold
+    label.Parent = billboard
+    
+    billboard.Parent = head
+    
+    -- Animate and remove
+    task.spawn(function()
+        for i = 1, 20 do
+            billboard.StudsOffset = billboard.StudsOffset + Vector3.new(0, 0.1, 0)
+            label.TextTransparency = i / 20
+            task.wait(0.05)
+        end
+        billboard:Destroy()
+    end)
+end
+
+function CombatSystem:HandleDeath(player)
+    -- Respawn with delay
+    task.delay(3, function()
+        player:LoadCharacter()
+    end)
+end
+
+function CombatSystem:SetCombatState(active)
+    combatStarted = active
+end
+
+function CombatSystem:GetPlayerHealth(player)
+    return playerHealth[player.UserId] or Config.COMBAT.MAX_HEALTH
+end
+
+CombatSystem:Init()
+return CombatSystem
