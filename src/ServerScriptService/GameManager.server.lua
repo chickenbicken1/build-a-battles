@@ -1,42 +1,24 @@
--- Build a Battles - Game Manager
+-- GameManager - Fortnite Style Build Battles
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-
--- Wait for Config
-local Config
-local success = pcall(function()
-    Config = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("Config", 5))
-end)
-
-if not success or not Config then
-    warn("GameManager: Could not load Config, using defaults")
-    Config = {
-        PHASES = { LOBBY = "LOBBY", BUILDING = "BUILDING", COMBAT = "COMBAT", END = "END" },
-        BUILD = { BUILD_TIME = 120, MAX_BLOCKS = 200 },
-        COMBAT = { ROUND_TIME = 180 }
-    }
-end
-
--- Create Remotes folder
-local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-if not Remotes then
-    Remotes = Instance.new("Folder")
-    Remotes.Name = "Remotes"
-    Remotes.Parent = ReplicatedStorage
-end
+local Config = require(ReplicatedStorage.Shared.Config)
 
 local GameManager = {}
-local currentPhase = Config.PHASES.LOBBY
-local phaseTimer = 0
+local currentPhase = "LOBBY"
+local phaseStartTime = 0
+local gameActive = false
+
+-- Remotes
+local Remotes = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
+Remotes.Name = "Remotes"
+Remotes.Parent = ReplicatedStorage
+
+local GameStateEvent = Instance.new("RemoteEvent")
+GameStateEvent.Name = "GameStateEvent"
+GameStateEvent.Parent = Remotes
 
 function GameManager:Init()
-    -- Create remote for UI updates
-    self.GameStateEvent = Instance.new("RemoteEvent")
-    self.GameStateEvent.Name = "GameStateEvent"
-    self.GameStateEvent.Parent = Remotes
-    
-    -- Setup workspace
-    self:SetupWorkspace()
+    self:SetupSpawnLocations()
     
     -- Start game loop
     task.spawn(function()
@@ -46,135 +28,131 @@ function GameManager:Init()
     print("✅ Game Manager Initialized")
 end
 
-function GameManager:SetupWorkspace()
-    -- Baseplate
-    if not workspace:FindFirstChild("Baseplate") then
-        local baseplate = Instance.new("Part")
-        baseplate.Name = "Baseplate"
-        baseplate.Size = Vector3.new(512, 1, 512)
-        baseplate.Position = Vector3.new(0, -0.5, 0)
-        baseplate.Anchored = true
-        baseplate.CanCollide = true
-        baseplate.Color = Color3.fromRGB(100, 100, 100)
-        baseplate.Material = Enum.Material.SmoothPlastic
-        baseplate.Parent = workspace
-    end
+-- Setup spawn locations
+function GameManager:SetupSpawnLocations()
+    local spawns = Instance.new("Folder")
+    spawns.Name = "SpawnLocations"
+    spawns.Parent = workspace
     
-    -- Spawn location
-    if not workspace:FindFirstChild("SpawnLocation") then
+    -- Create 4 team spawns around the build zone
+    for i = 1, 4 do
+        local angle = (i - 1) * (math.pi / 2)
+        local radius = 80
+        
         local spawn = Instance.new("SpawnLocation")
-        spawn.Name = "SpawnLocation"
-        spawn.Position = Vector3.new(0, 1, 0)
+        spawn.Name = "Spawn" .. i
+        spawn.Position = Vector3.new(
+            math.cos(angle) * radius,
+            10,
+            math.sin(angle) * radius
+        )
         spawn.Anchored = true
         spawn.CanCollide = false
-        spawn.Parent = workspace
-    end
-    
-    -- Buildings folder
-    if not workspace:FindFirstChild("Buildings") then
-        local buildings = Instance.new("Folder")
-        buildings.Name = "Buildings"
-        buildings.Parent = workspace
-    end
-    
-    -- Spawn locations for teams
-    if not workspace:FindFirstChild("SpawnLocations") then
-        local spawns = Instance.new("Folder")
-        spawns.Name = "SpawnLocations"
-        spawns.Parent = workspace
-        
-        for i = 1, 4 do
-            local spawn = Instance.new("Part")
-            spawn.Name = "Team" .. i .. "Spawn"
-            spawn.Size = Vector3.new(10, 1, 10)
-            spawn.Position = Vector3.new((i-2.5) * 100, 0.5, 0)
-            spawn.Anchored = true
-            spawn.CanCollide = true
-            spawn.Color = Color3.fromRGB(75, 75, 75)
-            spawn.Parent = spawns
-            
-            -- Build zone
-            local zone = Instance.new("Part")
-            zone.Name = "BuildZone" .. i
-            zone.Size = Vector3.new(80, 1, 80)
-            zone.Position = Vector3.new((i-2.5) * 100, 0.5, 0)
-            zone.Color = Color3.fromRGB(100, 100, 100)
-            zone.Transparency = 0.5
-            zone.Anchored = true
-            zone.CanCollide = true
-            zone.Parent = workspace
-        end
+        spawn.Transparency = 1
+        spawn.Parent = spawns
     end
 end
 
+-- Main game loop
 function GameManager:GameLoop()
     while true do
         -- LOBBY PHASE
-        self:SetPhase(Config.PHASES.LOBBY)
+        self:SetPhase("LOBBY")
         self:Broadcast("Waiting for players...")
         self:WaitForPlayers(1)
-        self:Countdown(10)
+        self:Countdown(Config.PHASES.LOBBY.duration)
         
-        -- BUILDING PHASE
-        self:SetPhase(Config.PHASES.BUILDING)
-        self:Broadcast("BUILD PHASE! Create your fortress!")
+        -- BUILD PHASE
+        self:SetPhase("BUILD")
+        self:Broadcast("BUILD PHASE! Construct your fort!")
         self:EnableBuilding(true)
-        self:GiveBuildTools()
-        local buildTime = (Config.BUILD and Config.BUILD.BUILD_TIME) or 120
-        self:Countdown(buildTime)
+        self:Countdown(Config.PHASES.BUILD.duration)
         self:EnableBuilding(false)
         
         -- COMBAT PHASE
-        self:SetPhase(Config.PHASES.COMBAT)
-        self:Broadcast("COMBAT PHASE! Destroy enemy bases!")
+        self:SetPhase("COMBAT")
+        self:Broadcast("COMBAT PHASE! Destroy enemy forts!")
         self:GiveWeapons()
-        local combatTime = (Config.COMBAT and Config.COMBAT.ROUND_TIME) or 180
-        self:TeleportToBuildZones()
-        self:Countdown(combatTime)
+        self:Countdown(Config.PHASES.COMBAT.duration)
         self:RemoveWeapons()
         
         -- END PHASE
-        self:SetPhase(Config.PHASES.END)
+        self:SetPhase("END")
         self:Broadcast("Round Over!")
-        self:ClearBuildings()
-        self:ResetPlayers()
+        self:ResetRound()
         
-        task.wait(5)
+        task.wait(Config.PHASES.END.duration)
     end
 end
 
-function GameManager:EnableBuilding(enabled)
-    self.GameStateEvent:FireAllClients("BUILDING_ENABLED", enabled)
-    print("🔨 Building enabled:", enabled)
+-- Set current phase
+function GameManager:SetPhase(phase)
+    currentPhase = phase
+    phaseStartTime = tick()
+    
+    GameStateEvent:FireAllClients("PHASE", {
+        phase = phase,
+        duration = Config.PHASES[phase].duration
+    })
+    
+    print(string.format("🎮 Phase: %s", phase))
 end
 
-function GameManager:GiveBuildTools()
+-- Wait for minimum players
+function GameManager:WaitForPlayers(minPlayers)
+    while #Players:GetPlayers() < minPlayers do
+        task.wait(1)
+    end
+end
+
+-- Countdown timer
+function GameManager:Countdown(duration)
+    for i = duration, 1, -1 do
+        GameStateEvent:FireAllClients("TIMER", i)
+        task.wait(1)
+    end
+end
+
+-- Broadcast message
+function GameManager:Broadcast(message)
+    GameStateEvent:FireAllClients("MESSAGE", message)
+    print(string.format("📢 %s", message))
+end
+
+-- Enable/disable building
+function GameManager:EnableBuilding(enabled)
+    GameStateEvent:FireAllClients("BUILDING_ENABLED", enabled)
+end
+
+-- Give weapons for combat
+function GameManager:GiveWeapons()
     for _, player in ipairs(Players:GetPlayers()) do
         local tool = Instance.new("Tool")
-        tool.Name = "BuildTool"
+        tool.Name = "Assault Rifle"
         tool.CanBeDropped = false
+        
+        -- Create weapon model
+        local handle = Instance.new("Part")
+        handle.Name = "Handle"
+        handle.Size = Vector3.new(0.5, 0.5, 3)
+        handle.Color = Color3.fromRGB(80, 80, 90)
+        handle.Material = Enum.Material.Metal
+        handle.Parent = tool
+        
+        tool.GripPos = Vector3.new(0, 0, -1)
         tool.Parent = player.Backpack
-        print("🔨 Gave build tool to", player.Name)
     end
 end
 
-function GameManager:GiveWeapons()
-    local WeaponModels = require(ReplicatedStorage.Shared.WeaponModels)
-    for _, player in ipairs(Players:GetPlayers()) do
-        -- Give sword
-        local sword = WeaponModels:CreateTool("Sword", "default")
-        sword.Parent = player.Backpack
-        print("⚔️ Gave sword to", player.Name)
-    end
-end
-
+-- Remove weapons
 function GameManager:RemoveWeapons()
     for _, player in ipairs(Players:GetPlayers()) do
         for _, tool in ipairs(player.Backpack:GetChildren()) do
-            if tool:IsA("Tool") and tool.Name ~= "BuildTool" then
+            if tool:IsA("Tool") and tool.Name ~= "Pickaxe" then
                 tool:Destroy()
             end
         end
+        
         local char = player.Character
         if char then
             local hum = char:FindFirstChild("Humanoid")
@@ -185,64 +163,26 @@ function GameManager:RemoveWeapons()
     end
 end
 
-function GameManager:SetPhase(phase)
-    currentPhase = phase
-    self.GameStateEvent:FireAllClients("PHASE", {phase = phase, timeLeft = 0})
-    print("🎮 Phase:", phase)
-end
-
-function GameManager:Broadcast(message)
-    print("📢", message)
-    self.GameStateEvent:FireAllClients("MESSAGE", message)
-end
-
-function GameManager:Countdown(seconds)
-    for i = seconds, 1, -1 do
-        -- Send timer update every second
-        self.GameStateEvent:FireAllClients("TIMER", i)
-        task.wait(1)
-    end
-end
-
-function GameManager:WaitForPlayers(minPlayers)
-    while #Players:GetPlayers() < minPlayers do
-        task.wait(1)
-    end
-end
-
-function GameManager:TeleportToBuildZones()
-    local players = Players:GetPlayers()
-    for i, player in ipairs(players) do
-        local char = player.Character
-        if char then
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if root then
-                local zoneNum = ((i - 1) % 4) + 1
-                local spawnPos = Vector3.new((zoneNum - 2.5) * 100, 10, 0)
-                root.CFrame = CFrame.new(spawnPos)
-            end
+-- Reset round
+function GameManager:ResetRound()
+    -- Clear all builds
+    local buildsFolder = workspace:FindFirstChild("Builds")
+    if buildsFolder then
+        for _, build in ipairs(buildsFolder:GetChildren()) do
+            build:Destroy()
         end
     end
-end
-
-function GameManager:ClearBuildings()
-    local buildings = workspace:FindFirstChild("Buildings")
-    if buildings then
-        for _, block in ipairs(buildings:GetChildren()) do
-            block:Destroy()
-        end
-    end
-end
-
-function GameManager:ResetPlayers()
+    
+    -- Reset players
     for _, player in ipairs(Players:GetPlayers()) do
         player:LoadCharacter()
     end
 end
 
--- Initialize with delay
-task.delay(4, function()
-    GameManager:Init()
-end)
+-- Get current phase
+function GameManager:GetCurrentPhase()
+    return currentPhase
+end
 
+GameManager:Init()
 return GameManager

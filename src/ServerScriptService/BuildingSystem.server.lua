@@ -1,173 +1,316 @@
--- Build a Battles - Building System
+-- BuildingSystem - Fortnite Style Building
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-
--- Wait for Config
-local Config
-local success = pcall(function()
-    Config = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("Config", 5))
-end)
-
-if not success or not Config then
-    warn("BuildingSystem: Could not load Config, using defaults")
-    Config = {
-        BUILD = {
-            MAX_BLOCKS = 200,
-            GRID_SIZE = 4,
-            BLOCK_TYPES = {
-                WOOD = { health = 100, color = Color3.fromRGB(161, 111, 67) },
-                STONE = { health = 300, color = Color3.fromRGB(125, 125, 125) },
-                METAL = { health = 500, color = Color3.fromRGB(80, 80, 90) }
-            }
-        }
-    }
-end
-
--- Create Remotes folder
-local BuildEvents = ReplicatedStorage:FindFirstChild("Remotes")
-if not BuildEvents then
-    BuildEvents = Instance.new("Folder")
-    BuildEvents.Name = "Remotes"
-    BuildEvents.Parent = ReplicatedStorage
-end
+local Config = require(ReplicatedStorage.Shared.Config)
+local Utils = require(ReplicatedStorage.Shared.Utils)
 
 local BuildingSystem = {}
-local playerBuilds = {}
+local buildsFolder = nil
+local buildZoneCenter = Vector3.new(0, 0, 0)
+
+-- Setup remotes
+local Remotes = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
+Remotes.Name = "Remotes"
+Remotes.Parent = ReplicatedStorage
+
+local PlaceBuildEvent = Instance.new("RemoteEvent")
+PlaceBuildEvent.Name = "PlaceBuild"
+PlaceBuildEvent.Parent = Remotes
+
+local MaterialUpdateEvent = Instance.new("RemoteEvent")
+MaterialUpdateEvent.Name = "MaterialUpdate"
+MaterialUpdateEvent.Parent = Remotes
+
+-- Get DataService reference
+local DataService = require(script.Parent.DataService)
 
 function BuildingSystem:Init()
-    -- Remote Events
-    self.PlaceBlock = Instance.new("RemoteEvent")
-    self.PlaceBlock.Name = "PlaceBlock"
-    self.PlaceBlock.Parent = BuildEvents
+    -- Create builds folder
+    buildsFolder = Instance.new("Folder")
+    buildsFolder.Name = "Builds"
+    buildsFolder.Parent = workspace
     
-    self.RemoveBlock = Instance.new("RemoteEvent")
-    self.RemoveBlock.Name = "RemoveBlock"
-    self.RemoveBlock.Parent = BuildEvents
+    -- Create build zone visual
+    self:CreateBuildZone()
     
-    self:SetupListeners()
+    -- Setup event listeners
+    PlaceBuildEvent.OnServerEvent:Connect(function(player, pieceType, position, normal, materialType)
+        return self:HandleBuildRequest(player, pieceType, position, normal, materialType)
+    end)
+    
+    -- Give materials periodically (like harvesting)
+    task.spawn(function()
+        while true do
+            task.wait(5)
+            for _, player in ipairs(Players:GetPlayers()) do
+                DataService:AddMaterial(player, "WOOD", 5)
+            end
+        end
+    end)
+    
     print("✅ Building System Initialized")
 end
 
-function BuildingSystem:SetupListeners()
-    self.PlaceBlock.OnServerEvent:Connect(function(player, position, blockType)
-        if not self:CanBuild(player) then return end
-        
-        local block = self:CreateBlock(position, blockType, player)
-        if block then
-            self:TrackBlock(player, block)
-        end
-    end)
+-- Create build zone visual
+function BuildingSystem:CreateBuildZone()
+    if not Config.BUILD_ZONE.ENABLED then return end
     
-    self.RemoveBlock.OnServerEvent:Connect(function(player, block)
-        if block and block:GetAttribute("Owner") == player.UserId then
-            block:Destroy()
-            self:UntrackBlock(player, block)
-        end
-    end)
+    -- Visual boundary
+    local zone = Instance.new("Part")
+    zone.Name = "BuildZone"
+    zone.Size = Vector3.new(Config.BUILD_ZONE.RADIUS * 2, 1, Config.BUILD_ZONE.RADIUS * 2)
+    zone.Position = Vector3.new(0, -0.5, 0)
+    zone.Anchored = true
+    zone.CanCollide = false
+    zone.Transparency = 0.9
+    zone.Color = Color3.fromRGB(50, 150, 255)
+    zone.Material = Enum.Material.Neon
+    zone.Parent = workspace
+    
+    -- Corner markers
+    for i = 1, 4 do
+        local angle = (i - 1) * math.pi / 2
+        local marker = Instance.new("Part")
+        marker.Size = Vector3.new(2, 10, 2)
+        marker.Position = Vector3.new(
+            math.cos(angle) * Config.BUILD_ZONE.RADIUS,
+            5,
+            math.sin(angle) * Config.BUILD_ZONE.RADIUS
+        )
+        marker.Anchored = true
+        marker.CanCollide = false
+        marker.Color = Color3.fromRGB(255, 200, 50)
+        marker.Material = Enum.Material.Neon
+        marker.Parent = workspace
+    end
 end
 
-function BuildingSystem:CanBuild(player)
-    local builds = playerBuilds[player.UserId]
-    if not builds then
-        playerBuilds[player.UserId] = {}
-        builds = playerBuilds[player.UserId]
+-- Handle build request from client
+function BuildingSystem:HandleBuildRequest(player, pieceType, position, normal, materialType)
+    -- Validate inputs
+    if not pieceType or not position or not normal then
+        return false, "Invalid parameters"
     end
     
-    local maxBlocks = (Config.BUILD and Config.BUILD.MAX_BLOCKS) or 200
-    return #builds < maxBlocks
-end
-
-function BuildingSystem:CreateBlock(position, blockType, player)
-    local blockTypes = Config.BUILD and Config.BUILD.BLOCK_TYPES or {}
-    local blockConfig = blockTypes[blockType]
-    if not blockConfig then return nil end
-    
-    local gridSize = (Config.BUILD and Config.BUILD.GRID_SIZE) or 4
-    
-    local block = Instance.new("Part")
-    block.Name = blockType .. "Block"
-    block.Size = Vector3.new(gridSize, gridSize, gridSize)
-    block.Position = self:SnapToGrid(position, gridSize)
-    block.Color = blockConfig.color
-    block.Material = Enum.Material.SmoothPlastic
-    block.Anchored = true
-    block.CanCollide = true
-    block:SetAttribute("Owner", player.UserId)
-    block:SetAttribute("Health", blockConfig.health)
-    block:SetAttribute("MaxHealth", blockConfig.health)
-    
-    local buildings = workspace:FindFirstChild("Buildings")
-    if not buildings then
-        buildings = Instance.new("Folder")
-        buildings.Name = "Buildings"
-        buildings.Parent = workspace
+    -- Check material type
+    materialType = materialType or "WOOD"
+    if not Config.MATERIALS[materialType] then
+        return false, "Invalid material"
     end
-    block.Parent = buildings
     
-    self:AddHealthBar(block)
-    return block
+    -- Check piece type
+    local pieceConfig = Config.BUILD_PIECES[pieceType]
+    if not pieceConfig then
+        return false, "Invalid piece type"
+    end
+    
+    -- Check build zone
+    if Config.BUILD_ZONE.ENABLED then
+        if not Utils.IsInBuildZone(position, buildZoneCenter, Config.BUILD_ZONE.RADIUS, Config.BUILD_ZONE.HEIGHT) then
+            return false, "Outside build zone"
+        end
+    end
+    
+    -- Check materials (cost = 10)
+    local cost = 10
+    if not DataService:RemoveMaterial(player, materialType, cost) then
+        return false, "Not enough materials"
+    end
+    
+    -- Create the build
+    local success, result = pcall(function()
+        return self:CreateBuildPiece(player, pieceType, position, normal, materialType)
+    end)
+    
+    if success and result then
+        DataService:TrackBuild(player, result)
+        return true, result
+    else
+        -- Refund materials on failure
+        DataService:AddMaterial(player, materialType, cost)
+        return false, "Build failed"
+    end
 end
 
-function BuildingSystem:SnapToGrid(position, grid)
-    return Vector3.new(
-        math.floor(position.X / grid + 0.5) * grid,
-        math.floor(position.Y / grid + 0.5) * grid,
-        math.floor(position.Z / grid + 0.5) * grid
-    )
+-- Create build piece
+function BuildingSystem:CreateBuildPiece(player, pieceType, position, normal, materialType)
+    local pieceConfig = Config.BUILD_PIECES[pieceType]
+    local materialConfig = Config.MATERIALS[materialType]
+    
+    -- Calculate rotation based on normal
+    local rotation = Utils.GetRotationFromNormal(normal)
+    
+    -- Calculate final position
+    local finalPosition = position + (normal * pieceConfig.offset)
+    finalPosition = Utils.SnapToGrid(finalPosition, Config.BUILD.GRID_SIZE)
+    
+    -- Create the part
+    local build = Instance.new("Part")
+    build.Name = player.Name .. "_" .. pieceType
+    build.Size = pieceConfig.size
+    build.Position = finalPosition
+    build.CFrame = CFrame.new(finalPosition) * rotation
+    build.Anchored = true
+    build.CanCollide = true
+    build.Color = materialConfig.color
+    build.Material = materialConfig.material
+    build:SetAttribute("Owner", player.UserId)
+    build:SetAttribute("PieceType", pieceType)
+    build:SetAttribute("MaterialType", materialType)
+    build:SetAttribute("Health", materialConfig.health)
+    build:SetAttribute("MaxHealth", materialConfig.maxHealth)
+    build.Parent = buildsFolder
+    
+    -- Add health bar
+    self:AddHealthBar(build)
+    
+    -- Add build effect
+    self:PlayBuildEffect(build)
+    
+    return build
 end
 
-function BuildingSystem:AddHealthBar(block)
+-- Add health bar to build
+function BuildingSystem:AddHealthBar(build)
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "HealthBar"
-    billboard.Size = UDim2.new(2, 0, 0.5, 0)
-    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.Size = UDim2.new(0, 60, 0, 8)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = true
     
-    local frame = Instance.new("Frame")
-    frame.Name = "Bar"
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-    frame.Parent = billboard
+    local bg = Instance.new("Frame")
+    bg.Name = "Background"
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    bg.BorderSizePixel = 0
+    bg.Parent = billboard
     
-    billboard.Parent = block
+    local fill = Instance.new("Frame")
+    fill.Name = "Fill"
+    fill.Size = UDim2.new(1, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    fill.BorderSizePixel = 0
+    fill.Parent = bg
+    
+    billboard.Parent = build
 end
 
-function BuildingSystem:TrackBlock(player, block)
-    if not playerBuilds[player.UserId] then
-        playerBuilds[player.UserId] = {}
-    end
-    table.insert(playerBuilds[player.UserId], block)
-end
-
-function BuildingSystem:UntrackBlock(player, block)
-    local builds = playerBuilds[player.UserId]
-    if builds then
-        for i, b in ipairs(builds) do
-            if b == block then
-                table.remove(builds, i)
-                break
-            end
+-- Update health bar
+function BuildingSystem:UpdateHealthBar(build)
+    local healthBar = build:FindFirstChild("HealthBar")
+    if not healthBar then return end
+    
+    local health = build:GetAttribute("Health") or 0
+    local maxHealth = build:GetAttribute("MaxHealth") or 1
+    local percent = math.clamp(health / maxHealth, 0, 1)
+    
+    local fill = healthBar:FindFirstChild("Background") and healthBar.Background:FindFirstChild("Fill")
+    if fill then
+        fill.Size = UDim2.new(percent, 0, 1, 0)
+        
+        -- Color based on health
+        if percent > 0.5 then
+            fill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        elseif percent > 0.25 then
+            fill.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+        else
+            fill.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
         end
     end
 end
 
-function BuildingSystem:ClearPlayerBuilds(player)
-    local builds = playerBuilds[player.UserId]
-    if builds then
-        for _, block in ipairs(builds) do
-            if block then block:Destroy() end
-        end
-        playerBuilds[player.UserId] = {}
+-- Damage build
+function BuildingSystem:DamageBuild(build, damage, attacker)
+    local health = build:GetAttribute("Health") or 0
+    local owner = build:GetAttribute("Owner")
+    
+    -- Can't damage own builds (optional rule)
+    if attacker and owner == attacker.UserId then
+        return false
+    end
+    
+    local newHealth = math.max(0, health - damage)
+    build:SetAttribute("Health", newHealth)
+    
+    self:UpdateHealthBar(build)
+    
+    if newHealth <= 0 then
+        self:DestroyBuild(build, attacker)
+        return true
+    end
+    
+    return false
+end
+
+-- Destroy build
+function BuildingSystem:DestroyBuild(build, destroyer)
+    -- Play destroy effect
+    self:PlayDestroyEffect(build)
+    
+    -- Drop some materials (30% of cost)
+    local materialType = build:GetAttribute("MaterialType")
+    if materialType and destroyer then
+        local dropAmount = math.random(1, 3)
+        DataService:AddMaterial(destroyer, materialType, dropAmount)
+    end
+    
+    build:Destroy()
+end
+
+-- Play build effect
+function BuildingSystem:PlayBuildEffect(build)
+    -- Particle burst
+    for i = 1, 8 do
+        local particle = Instance.new("Part")
+        particle.Size = Vector3.new(0.2, 0.2, 0.2)
+        particle.Position = build.Position
+        particle.Color = build.Color
+        particle.Material = Enum.Material.Neon
+        particle.Anchored = false
+        particle.CanCollide = false
+        particle.Parent = workspace
+        
+        local angle = (i / 8) * math.pi * 2
+        particle.Velocity = Vector3.new(
+            math.cos(angle) * 10,
+            math.random(5, 15),
+            math.sin(angle) * 10
+        )
+        
+        game:GetService("Debris"):AddItem(particle, 0.5)
     end
 end
 
-function BuildingSystem:GetPlayerBuilds(player)
-    return playerBuilds[player.UserId] or {}
+-- Play destroy effect
+function BuildingSystem:PlayDestroyEffect(build)
+    local explosion = Instance.new("Explosion")
+    explosion.Position = build.Position
+    explosion.BlastRadius = 3
+    explosion.BlastPressure = 0
+    explosion.Parent = workspace
+    
+    -- Debris
+    for i = 1, 6 do
+        local debris = Instance.new("Part")
+        debris.Size = Vector3.new(0.5, 0.5, 0.5)
+        debris.Position = build.Position
+        debris.Color = build.Color
+        debris.Velocity = Vector3.new(
+            math.random(-20, 20),
+            math.random(10, 30),
+            math.random(-20, 20)
+        )
+        debris.Parent = workspace
+        game:GetService("Debris"):AddItem(debris, 2)
+    end
 end
 
--- Initialize with delay
-task.delay(2, function()
-    BuildingSystem:Init()
-end)
+-- Clear all builds
+function BuildingSystem:ClearAllBuilds()
+    for _, build in ipairs(buildsFolder:GetChildren()) do
+        build:Destroy()
+    end
+end
 
+BuildingSystem:Init()
 return BuildingSystem
