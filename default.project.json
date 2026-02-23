@@ -1,5 +1,5 @@
 {
-  "name": "BuildABattles",
+  "name": "AuraRNGRoller",
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
@@ -8,10 +8,6 @@
       "Shared": {
         "$className": "Folder",
         "$path": "src/ReplicatedStorage/Shared"
-      },
-      "Remotes": {
-        "$className": "Folder",
-        "$path": "src/ReplicatedStorage/Remotes"
       }
     },
     "ServerScriptService": {
@@ -22,10 +18,6 @@
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "$ignoreUnknownInstances": true,
-      "StarterCharacterScripts": {
-        "$className": "StarterCharacterScripts",
-        "$path": "src/StarterPlayer/StarterCharacterScripts"
-      },
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",
         "$path": "src/StarterPlayer/StarterPlayerScripts"

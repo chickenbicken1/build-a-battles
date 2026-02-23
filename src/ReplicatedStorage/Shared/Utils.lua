@@ -1,37 +1,70 @@
 -- Utility Functions
 local Utils = {}
 
--- Snap position to grid
-function Utils.SnapToGrid(position, gridSize)
-    gridSize = gridSize or 4
-    return Vector3.new(
-        math.floor(position.X / gridSize + 0.5) * gridSize,
-        math.floor(position.Y / gridSize + 0.5) * gridSize,
-        math.floor(position.Z / gridSize + 0.5) * gridSize
-    )
-end
-
--- Get rotation based on normal
-function Utils.GetRotationFromNormal(normal)
-    if math.abs(normal.X) > 0.5 then
-        return CFrame.Angles(0, normal.X > 0 and math.pi/2 or -math.pi/2, 0)
-    elseif math.abs(normal.Z) > 0.5 then
-        return CFrame.Angles(0, normal.Z > 0 and 0 or math.pi, 0)
-    else
-        return CFrame.identity
+-- Weighted random selection
+function Utils.WeightedRandom(items, luckMultiplier)
+    luckMultiplier = luckMultiplier or 1
+    
+    -- Calculate total weight with luck
+    local totalWeight = 0
+    local weightedItems = {}
+    
+    for _, item in ipairs(items) do
+        local weight = item.chance * luckMultiplier
+        totalWeight = totalWeight + weight
+        table.insert(weightedItems, {
+            item = item,
+            weight = weight,
+            cumulative = totalWeight
+        })
     end
+    
+    -- Roll the dice
+    local roll = math.random() * totalWeight
+    
+    -- Find selected item
+    for _, weighted in ipairs(weightedItems) do
+        if roll <= weighted.cumulative then
+            return weighted.item
+        end
+    end
+    
+    return items[1] -- Fallback
 end
 
--- Format time
-function Utils.FormatTime(seconds)
-    local mins = math.floor(seconds / 60)
-    local secs = math.floor(seconds % 60)
-    return string.format("%02d:%02d", mins, secs)
+-- Simple random selection from weighted table
+function Utils.RollAura(auras, luckMultiplier)
+    luckMultiplier = luckMultiplier or 1
+    
+    local roll = math.random()
+    local adjustedRoll = roll / luckMultiplier
+    
+    -- Sort by chance (highest to lowest rarity)
+    local sortedAuras = {}
+    for _, aura in ipairs(auras) do
+        table.insert(sortedAuras, aura)
+    end
+    
+    -- Check from rarest to common
+    for i = #sortedAuras, 1, -1 do
+        if adjustedRoll <= sortedAuras[i].chance then
+            return sortedAuras[i]
+        end
+    end
+    
+    -- Return common if nothing else
+    for _, aura in ipairs(auras) do
+        if aura.rarity == "Common" then
+            return aura
+        end
+    end
+    
+    return auras[1]
 end
 
 -- Format number with commas
 function Utils.FormatNumber(num)
-    local formatted = tostring(num)
+    local formatted = tostring(math.floor(num))
     local k
     while true do
         formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
@@ -40,14 +73,15 @@ function Utils.FormatNumber(num)
     return formatted
 end
 
--- Check if position is in build zone
-function Utils.IsInBuildZone(position, center, radius, height)
-    local dx = position.X - center.X
-    local dz = position.Z - center.Z
-    local dy = position.Y - center.Y
-    
-    local horizontalDist = math.sqrt(dx*dx + dz*dz)
-    return horizontalDist <= radius and math.abs(dy) <= height/2
+-- Format luck multiplier
+function Utils.FormatLuck(luck)
+    if luck >= 100 then
+        return string.format("%.0fx", luck)
+    elseif luck >= 10 then
+        return string.format("%.1fx", luck)
+    else
+        return string.format("%.2fx", luck)
+    end
 end
 
 -- Deep copy table
@@ -63,13 +97,9 @@ function Utils.DeepCopy(original)
     return copy
 end
 
--- Create tween info
-function Utils.TweenInfo(duration, style, direction)
-    return TweenInfo.new(
-        duration or 0.3,
-        style or Enum.EasingStyle.Quad,
-        direction or Enum.EasingDirection.Out
-    )
+-- Create unique ID
+function Utils.GenerateId()
+    return tostring(math.random(100000, 999999)) .. tostring(tick())
 end
 
 return Utils
