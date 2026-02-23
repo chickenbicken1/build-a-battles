@@ -470,10 +470,29 @@ function BuildTool:ConnectEvents()
     local gameStateEvent = remotes:WaitForChild("GameStateEvent")
     
     gameStateEvent.OnClientEvent:Connect(function(type, data)
-        if type == "PHASE" then
-            self:SetBuildingEnabled(data.phase == "BUILDING")
+        if type == "BUILDING_ENABLED" then
+            self:SetBuildingEnabled(data)
+        elseif type == "PHASE" and data.phase == "BUILDING" then
+            self:SetBuildingEnabled(true)
         end
     end)
+    
+    -- Listen for tool equipped
+    local tool = script.Parent
+    if tool and tool:IsA("Tool") then
+        tool.Equipped:Connect(function()
+            canBuild = true
+            if ghostBlock then
+                ghostBlock.Transparency = 0.6
+            end
+        end)
+        tool.Unequipped:Connect(function()
+            canBuild = false
+            if ghostBlock then
+                ghostBlock.Transparency = 1
+            end
+        end)
+    end
 end
 
 BuildTool:Init()

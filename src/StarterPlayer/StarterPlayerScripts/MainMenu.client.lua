@@ -409,8 +409,12 @@ function MainMenu:ConnectEvents()
     local gameStateEvent = remotes:WaitForChild("GameStateEvent")
     
     gameStateEvent.OnClientEvent:Connect(function(type, data)
-        if type == "PHASE" and data.phase ~= "LOBBY" then
-            self:HideMenu()
+        if type == "PHASE" then
+            if data == "BUILDING" or data == "COMBAT" then
+                self:HideMenu()
+            end
+        elseif type == "MESSAGE" then
+            -- Show broadcast messages
         end
     end)
 end

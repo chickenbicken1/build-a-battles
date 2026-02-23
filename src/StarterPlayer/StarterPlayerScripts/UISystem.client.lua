@@ -419,9 +419,11 @@ function UISystem:ConnectEvents()
     local gameStateEvent = remotes:WaitForChild("GameStateEvent")
     gameStateEvent.OnClientEvent:Connect(function(type, data)
         if type == "PHASE" then
-            self:UpdatePhase(data.phase, data.timeLeft)
+            self:UpdatePhase(data, 0)
         elseif type == "TIMER" then
             uiElements.timerText.Text = Utils.FormatTime(data)
+        elseif type == "MESSAGE" then
+            print("📢", data)
         elseif type == "KILL" then
             self:AddKillFeed(data.killer, data.victim, data.weapon)
         elseif type == "BLOCKS_UPDATE" then

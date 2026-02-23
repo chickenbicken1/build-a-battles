@@ -118,15 +118,20 @@ function GameManager:GameLoop()
         -- BUILDING PHASE
         self:SetPhase(Config.PHASES.BUILDING)
         self:Broadcast("BUILD PHASE! Create your fortress!")
+        self:EnableBuilding(true)
+        self:GiveBuildTools()
         local buildTime = (Config.BUILD and Config.BUILD.BUILD_TIME) or 120
         self:Countdown(buildTime)
+        self:EnableBuilding(false)
         
         -- COMBAT PHASE
         self:SetPhase(Config.PHASES.COMBAT)
         self:Broadcast("COMBAT PHASE! Destroy enemy bases!")
+        self:GiveWeapons()
         local combatTime = (Config.COMBAT and Config.COMBAT.ROUND_TIME) or 180
         self:TeleportToBuildZones()
         self:Countdown(combatTime)
+        self:RemoveWeapons()
         
         -- END PHASE
         self:SetPhase(Config.PHASES.END)
@@ -138,9 +143,51 @@ function GameManager:GameLoop()
     end
 end
 
+function GameManager:EnableBuilding(enabled)
+    self.GameStateEvent:FireAllClients("BUILDING_ENABLED", enabled)
+    print("🔨 Building enabled:", enabled)
+end
+
+function GameManager:GiveBuildTools()
+    for _, player in ipairs(Players:GetPlayers()) do
+        local tool = Instance.new("Tool")
+        tool.Name = "BuildTool"
+        tool.CanBeDropped = false
+        tool.Parent = player.Backpack
+        print("🔨 Gave build tool to", player.Name)
+    end
+end
+
+function GameManager:GiveWeapons()
+    local WeaponModels = require(ReplicatedStorage.Shared.WeaponModels)
+    for _, player in ipairs(Players:GetPlayers()) do
+        -- Give sword
+        local sword = WeaponModels:CreateTool("Sword", "default")
+        sword.Parent = player.Backpack
+        print("⚔️ Gave sword to", player.Name)
+    end
+end
+
+function GameManager:RemoveWeapons()
+    for _, player in ipairs(Players:GetPlayers()) do
+        for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name ~= "BuildTool" then
+                tool:Destroy()
+            end
+        end
+        local char = player.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then
+                hum:UnequipTools()
+            end
+        end
+    end
+end
+
 function GameManager:SetPhase(phase)
     currentPhase = phase
-    self.GameStateEvent:FireAllClients(phase)
+    self.GameStateEvent:FireAllClients("PHASE", {phase = phase, timeLeft = 0})
     print("🎮 Phase:", phase)
 end
 
@@ -151,9 +198,8 @@ end
 
 function GameManager:Countdown(seconds)
     for i = seconds, 1, -1 do
-        if i % 10 == 0 or i <= 5 then
-            self.GameStateEvent:FireAllClients("TIMER", i)
-        end
+        -- Send timer update every second
+        self.GameStateEvent:FireAllClients("TIMER", i)
         task.wait(1)
     end
 end
