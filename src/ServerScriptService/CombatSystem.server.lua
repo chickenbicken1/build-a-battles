@@ -2,7 +2,22 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
-local Config = require(ReplicatedStorage.Shared.Config)
+-- Wait for Config to exist (with timeout)
+local Config
+local success = pcall(function()
+    Config = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("Config", 5))
+end)
+
+if not success or not Config then
+    warn("CombatSystem: Could not load Config, using defaults")
+    Config = {
+        COMBAT = {
+            ROUND_TIME = 180,
+            WEAPONS = { SWORD = { damage = 25 }, BOW = { damage = 15 }, ROCKET = { damage = 75 } },
+            MAX_HEALTH = 100
+        }
+    }
+end
 
 -- Create Remotes folder if missing
 local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
@@ -20,7 +35,7 @@ function CombatSystem:Init()
     -- Remote Events
     self.CombatEvent = Instance.new("RemoteEvent")
     self.CombatEvent.Name = "CombatEvent"
-    self.CombatEvent.Parent = ReplicatedStorage.Remotes
+    self.CombatEvent.Parent = Remotes
     
     self:SetupListeners()
     print("✅ Combat System Initialized")
@@ -38,18 +53,28 @@ function CombatSystem:SetupListeners()
     
     -- Setup player health on join
     Players.PlayerAdded:Connect(function(player)
-        playerHealth[player.UserId] = Config.COMBAT.MAX_HEALTH
+        playerHealth[player.UserId] = (Config.COMBAT and Config.COMBAT.MAX_HEALTH) or 100
         
         player.CharacterAdded:Connect(function(char)
-            playerHealth[player.UserId] = Config.COMBAT.MAX_HEALTH
+            playerHealth[player.UserId] = (Config.COMBAT and Config.COMBAT.MAX_HEALTH) or 100
             self:SetupCharacter(char, player)
         end)
     end)
+    
+    -- Handle existing players
+    for _, player in ipairs(Players:GetPlayers()) do
+        playerHealth[player.UserId] = (Config.COMBAT and Config.COMBAT.MAX_HEALTH) or 100
+        if player.Character then
+            self:SetupCharacter(player.Character, player)
+        end
+    end
 end
 
 function CombatSystem:SetupCharacter(character, player)
-    local humanoid = character:WaitForChild("Humanoid")
-    humanoid.Health = playerHealth[player.UserId]
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if not humanoid then return end
+    
+    humanoid.Health = playerHealth[player.UserId] or 100
     
     humanoid.HealthChanged:Connect(function(newHealth)
         playerHealth[player.UserId] = newHealth
@@ -62,19 +87,18 @@ end
 function CombatSystem:HandleAttack(attacker, target, weaponType)
     if not combatStarted then return end
     
-    local weapon = Config.COMBAT.WEAPONS[weaponType]
+    local weapons = Config.COMBAT and Config.COMBAT.WEAPONS or {}
+    local weapon = weapons[weaponType]
     if not weapon then return end
     
     -- Validate target
-    if target:IsA("Player") then
+    if target and target:IsA("Player") then
         local char = target.Character
         if char then
             local humanoid = char:FindFirstChild("Humanoid")
             if humanoid then
-                humanoid:TakeDamage(weapon.damage)
-                
-                -- Visual feedback
-                self:CreateDamageIndicator(target, weapon.damage)
+                humanoid:TakeDamage(weapon.damage or 25)
+                self:CreateDamageIndicator(target, weapon.damage or 25)
             end
         end
     end
@@ -82,14 +106,16 @@ end
 
 function CombatSystem:DamageBlock(player, block, weaponType)
     if not combatStarted then return end
-    if block:GetAttribute("Owner") == player.UserId then return end -- Can't break own blocks
+    if not block then return end
+    if block:GetAttribute("Owner") == player.UserId then return end
     
-    local weapon = Config.COMBAT.WEAPONS[weaponType]
+    local weapons = Config.COMBAT and Config.COMBAT.WEAPONS or {}
+    local weapon = weapons[weaponType]
     if not weapon then return end
     
-    local currentHealth = block:GetAttribute("Health")
-    local maxHealth = block:GetAttribute("MaxHealth")
-    local newHealth = currentHealth - weapon.damage
+    local currentHealth = block:GetAttribute("Health") or 100
+    local maxHealth = block:GetAttribute("MaxHealth") or 100
+    local newHealth = currentHealth - (weapon.damage or 25)
     
     block:SetAttribute("Health", newHealth)
     
@@ -97,11 +123,10 @@ function CombatSystem:DamageBlock(player, block, weaponType)
     local healthBar = block:FindFirstChild("HealthBar")
     if healthBar then
         local bar = healthBar:FindFirstChild("Bar")
-        if bar then
+        if bar and bar:IsA("GuiObject") then
             local percent = math.max(0, newHealth / maxHealth)
             bar.Size = UDim2.new(percent, 0, 1, 0)
             
-            -- Color change based on health
             if percent > 0.5 then
                 bar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
             elseif percent > 0.25 then
@@ -112,21 +137,18 @@ function CombatSystem:DamageBlock(player, block, weaponType)
         end
     end
     
-    -- Destroy block if health depleted
     if newHealth <= 0 then
         self:DestroyBlock(block)
     end
 end
 
 function CombatSystem:DestroyBlock(block)
-    -- Particle effect
     local explosion = Instance.new("Explosion")
     explosion.Position = block.Position
     explosion.BlastRadius = 2
-    explosion.BlastPressure = 0 -- No physics push
+    explosion.BlastPressure = 0
     explosion.Parent = workspace
     
-    -- Debris effect
     for i = 1, 5 do
         local debris = Instance.new("Part")
         debris.Size = Vector3.new(1, 1, 1)
@@ -169,7 +191,6 @@ function CombatSystem:CreateDamageIndicator(target, damage)
     
     billboard.Parent = head
     
-    -- Animate and remove
     task.spawn(function()
         for i = 1, 20 do
             billboard.StudsOffset = billboard.StudsOffset + Vector3.new(0, 0.1, 0)
@@ -181,9 +202,10 @@ function CombatSystem:CreateDamageIndicator(target, damage)
 end
 
 function CombatSystem:HandleDeath(player)
-    -- Respawn with delay
     task.delay(3, function()
-        player:LoadCharacter()
+        if player then
+            player:LoadCharacter()
+        end
     end)
 end
 
@@ -192,8 +214,12 @@ function CombatSystem:SetCombatState(active)
 end
 
 function CombatSystem:GetPlayerHealth(player)
-    return playerHealth[player.UserId] or Config.COMBAT.MAX_HEALTH
+    return playerHealth[player.UserId] or 100
 end
 
-CombatSystem:Init()
+-- Initialize with delay to let Rojo finish
+task.delay(3, function()
+    CombatSystem:Init()
+end)
+
 return CombatSystem

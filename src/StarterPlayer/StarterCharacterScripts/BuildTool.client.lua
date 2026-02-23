@@ -7,8 +7,27 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 
-local Config = require(ReplicatedStorage.Shared.Config)
-local BuildEvents = ReplicatedStorage.Remotes.BuildEvents
+-- Wait for Config
+local Config
+task.spawn(function()
+    local success = pcall(function()
+        Config = require(ReplicatedStorage:WaitForChild("Shared", 10):WaitForChild("Config", 10))
+    end)
+    if not success then
+        Config = {
+            BUILD = { MAX_BLOCKS = 200, GRID_SIZE = 4, BLOCK_TYPES = { WOOD = { color = Color3.fromRGB(161, 111, 67) } } }
+        }
+    end
+end)
+
+-- Wait for Remotes
+local BuildEvents
+task.spawn(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+    if remotes then
+        BuildEvents = remotes
+    end
+end)
 
 local BuildTool = {}
 local currentBlockType = "WOOD"
@@ -16,6 +35,8 @@ local canBuild = false
 local ghostBlock = nil
 
 function BuildTool:Init()
+    task.wait(2) -- Wait for everything to load
+    
     self:CreateUI()
     self:SetupInputs()
     self:CreateGhostBlock()
@@ -24,12 +45,10 @@ function BuildTool:Init()
 end
 
 function BuildTool:CreateUI()
-    -- Building UI
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "BuildUI"
     screenGui.ResetOnSpawn = false
     
-    -- Block selector
     local selector = Instance.new("Frame")
     selector.Name = "BlockSelector"
     selector.Size = UDim2.new(0, 300, 0, 60)
@@ -43,22 +62,17 @@ function BuildTool:CreateUI()
     corner.CornerRadius = UDim.new(0, 10)
     corner.Parent = selector
     
-    -- Block type buttons
     local types = {"WOOD", "STONE", "METAL"}
     for i, blockType in ipairs(types) do
         local btn = Instance.new("TextButton")
         btn.Name = blockType
         btn.Size = UDim2.new(0.3, -5, 0.8, 0)
         btn.Position = UDim2.new((i-1) * 0.33, 5, 0.1, 0)
-        btn.BackgroundColor3 = Config.BUILD.BLOCK_TYPES[blockType].color
+        btn.BackgroundColor3 = self:GetBlockColor(blockType)
         btn.Text = blockType
         btn.TextColor3 = Color3.new(1, 1, 1)
         btn.TextScaled = true
         btn.Parent = selector
-        
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 5)
-        btnCorner.Parent = btn
         
         btn.MouseButton1Click:Connect(function()
             currentBlockType = blockType
@@ -66,45 +80,49 @@ function BuildTool:CreateUI()
         end)
     end
     
-    -- Instructions
     local instructions = Instance.new("TextLabel")
     instructions.Name = "Instructions"
     instructions.Size = UDim2.new(0, 400, 0, 30)
     instructions.Position = UDim2.new(0.5, -200, 0.85, 0)
     instructions.BackgroundTransparency = 1
-    instructions.Text = "Click to place | Press R to rotate | Click block to remove"
+    instructions.Text = "Click to place | Click block to remove"
     instructions.TextColor3 = Color3.new(1, 1, 1)
     instructions.TextScaled = true
     instructions.Parent = screenGui
     
-    screenGui.Parent = player.PlayerGui
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+end
+
+function BuildTool:GetBlockColor(blockType)
+    local colors = {
+        WOOD = Color3.fromRGB(161, 111, 67),
+        STONE = Color3.fromRGB(125, 125, 125),
+        METAL = Color3.fromRGB(80, 80, 90)
+    }
+    return colors[blockType] or Color3.fromRGB(100, 100, 100)
 end
 
 function BuildTool:CreateGhostBlock()
     ghostBlock = Instance.new("Part")
     ghostBlock.Name = "GhostBlock"
-    ghostBlock.Size = Vector3.new(Config.BUILD.GRID_SIZE, Config.BUILD.GRID_SIZE, Config.BUILD.GRID_SIZE)
+    ghostBlock.Size = Vector3.new(4, 4, 4)
     ghostBlock.Transparency = 0.7
     ghostBlock.Anchored = true
     ghostBlock.CanCollide = false
-    ghostBlock.Material = Enum.Material.SmoothPlastic
+    ghostBlock.Color = self:GetBlockColor("WOOD")
     ghostBlock.Parent = workspace
-    
-    self:UpdateGhostBlock()
 end
 
 function BuildTool:UpdateGhostBlock()
     if ghostBlock then
-        local config = Config.BUILD.BLOCK_TYPES[currentBlockType]
-        ghostBlock.Color = config.color
+        ghostBlock.Color = self:GetBlockColor(currentBlockType)
     end
 end
 
 function BuildTool:SetupInputs()
-    -- Mouse movement for ghost block
     RunService.RenderStepped:Connect(function()
-        if not canBuild then
-            ghostBlock.Transparency = 1
+        if not canBuild or not ghostBlock then
+            if ghostBlock then ghostBlock.Transparency = 1 end
             return
         end
         
@@ -114,46 +132,40 @@ function BuildTool:SetupInputs()
         local result = workspace:Raycast(ray.Origin, ray.Direction * 100)
         
         if result then
-            local gridPos = self:SnapToGrid(result.Position + result.Normal * (Config.BUILD.GRID_SIZE / 2))
+            local gridSize = (Config and Config.BUILD and Config.BUILD.GRID_SIZE) or 4
+            local gridPos = self:SnapToGrid(result.Position + result.Normal * (gridSize / 2), gridSize)
             ghostBlock.Position = gridPos
         end
     end)
     
-    -- Click to place/remove
     mouse.Button1Down:Connect(function()
-        if not canBuild then return end
+        if not canBuild or not BuildEvents then return end
         
         local target = mouse.Target
         
-        if target and target:IsA("Part") and target.Parent == workspace.Buildings then
-            -- Remove block
-            if target:GetAttribute("Owner") == player.UserId then
-                BuildEvents.RemoveBlock:FireServer(target)
+        if target and target:IsA("BasePart") and target.Parent and target.Parent.Name == "Buildings" then
+            local removeEvent = BuildEvents:FindFirstChild("RemoveBlock")
+            if removeEvent and target:GetAttribute("Owner") == player.UserId then
+                removeEvent:FireServer(target)
             end
         else
-            -- Place block
             local ray = workspace.CurrentCamera:ViewportPointToRay(mouse.X, mouse.Y)
             local result = workspace:Raycast(ray.Origin, ray.Direction * 100)
             
             if result then
-                local placePos = result.Position + result.Normal * (Config.BUILD.GRID_SIZE / 2)
-                BuildEvents.PlaceBlock:FireServer(placePos, currentBlockType)
+                local gridSize = (Config and Config.BUILD and Config.BUILD.GRID_SIZE) or 4
+                local placePos = result.Position + result.Normal * (gridSize / 2)
+                local placeEvent = BuildEvents:FindFirstChild("PlaceBlock")
+                if placeEvent then
+                    placeEvent:FireServer(placePos, currentBlockType)
+                end
             end
-        end
-    end)
-    
-    -- Rotate ghost block with R
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
-        if input.KeyCode == Enum.KeyCode.R then
-            ghostBlock.Rotation = ghostBlock.Rotation + Vector3.new(0, 90, 0)
         end
     end)
 end
 
-function BuildTool:SnapToGrid(position)
-    local grid = Config.BUILD.GRID_SIZE
+function BuildTool:SnapToGrid(position, grid)
+    grid = grid or 4
     return Vector3.new(
         math.floor(position.X / grid + 0.5) * grid,
         math.floor(position.Y / grid + 0.5) * grid,
@@ -168,5 +180,7 @@ function BuildTool:SetBuildingEnabled(enabled)
     end
 end
 
+-- Initialize
 BuildTool:Init()
+
 return BuildTool

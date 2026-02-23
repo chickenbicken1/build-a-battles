@@ -2,9 +2,28 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
-local Config = require(ReplicatedStorage.Shared.Config)
+-- Wait for Config
+local Config
+local success = pcall(function()
+    Config = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("Config", 5))
+end)
 
--- Create Remotes folder if missing
+if not success or not Config then
+    warn("BuildingSystem: Could not load Config, using defaults")
+    Config = {
+        BUILD = {
+            MAX_BLOCKS = 200,
+            GRID_SIZE = 4,
+            BLOCK_TYPES = {
+                WOOD = { health = 100, color = Color3.fromRGB(161, 111, 67) },
+                STONE = { health = 300, color = Color3.fromRGB(125, 125, 125) },
+                METAL = { health = 500, color = Color3.fromRGB(80, 80, 90) }
+            }
+        }
+    }
+end
+
+-- Create Remotes folder
 local BuildEvents = ReplicatedStorage:FindFirstChild("Remotes")
 if not BuildEvents then
     BuildEvents = Instance.new("Folder")
@@ -13,8 +32,7 @@ if not BuildEvents then
 end
 
 local BuildingSystem = {}
-local playerBuilds = {} -- Store each player's structures
-local buildZones = {} -- Building area boundaries
+local playerBuilds = {}
 
 function BuildingSystem:Init()
     -- Remote Events
@@ -31,7 +49,6 @@ function BuildingSystem:Init()
 end
 
 function BuildingSystem:SetupListeners()
-    -- Handle block placement
     self.PlaceBlock.OnServerEvent:Connect(function(player, position, blockType)
         if not self:CanBuild(player) then return end
         
@@ -41,7 +58,6 @@ function BuildingSystem:SetupListeners()
         end
     end)
     
-    -- Handle block removal
     self.RemoveBlock.OnServerEvent:Connect(function(player, block)
         if block and block:GetAttribute("Owner") == player.UserId then
             block:Destroy()
@@ -51,24 +67,27 @@ function BuildingSystem:SetupListeners()
 end
 
 function BuildingSystem:CanBuild(player)
-    -- Check if player is in build phase and under block limit
     local builds = playerBuilds[player.UserId]
     if not builds then
         playerBuilds[player.UserId] = {}
         builds = playerBuilds[player.UserId]
     end
     
-    return #builds < Config.BUILD.MAX_BLOCKS
+    local maxBlocks = (Config.BUILD and Config.BUILD.MAX_BLOCKS) or 200
+    return #builds < maxBlocks
 end
 
 function BuildingSystem:CreateBlock(position, blockType, player)
-    local blockConfig = Config.BUILD.BLOCK_TYPES[blockType]
+    local blockTypes = Config.BUILD and Config.BUILD.BLOCK_TYPES or {}
+    local blockConfig = blockTypes[blockType]
     if not blockConfig then return nil end
+    
+    local gridSize = (Config.BUILD and Config.BUILD.GRID_SIZE) or 4
     
     local block = Instance.new("Part")
     block.Name = blockType .. "Block"
-    block.Size = Vector3.new(Config.BUILD.GRID_SIZE, Config.BUILD.GRID_SIZE, Config.BUILD.GRID_SIZE)
-    block.Position = self:SnapToGrid(position)
+    block.Size = Vector3.new(gridSize, gridSize, gridSize)
+    block.Position = self:SnapToGrid(position, gridSize)
     block.Color = blockConfig.color
     block.Material = Enum.Material.SmoothPlastic
     block.Anchored = true
@@ -76,16 +95,20 @@ function BuildingSystem:CreateBlock(position, blockType, player)
     block:SetAttribute("Owner", player.UserId)
     block:SetAttribute("Health", blockConfig.health)
     block:SetAttribute("MaxHealth", blockConfig.health)
-    block.Parent = workspace.Buildings
     
-    -- Add health bar UI
+    local buildings = workspace:FindFirstChild("Buildings")
+    if not buildings then
+        buildings = Instance.new("Folder")
+        buildings.Name = "Buildings"
+        buildings.Parent = workspace
+    end
+    block.Parent = buildings
+    
     self:AddHealthBar(block)
-    
     return block
 end
 
-function BuildingSystem:SnapToGrid(position)
-    local grid = Config.BUILD.GRID_SIZE
+function BuildingSystem:SnapToGrid(position, grid)
     return Vector3.new(
         math.floor(position.X / grid + 0.5) * grid,
         math.floor(position.Y / grid + 0.5) * grid,
@@ -142,5 +165,9 @@ function BuildingSystem:GetPlayerBuilds(player)
     return playerBuilds[player.UserId] or {}
 end
 
-BuildingSystem:Init()
+-- Initialize with delay
+task.delay(2, function()
+    BuildingSystem:Init()
+end)
+
 return BuildingSystem

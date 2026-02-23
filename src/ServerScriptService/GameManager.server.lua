@@ -2,12 +2,22 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
-local Config = require(ReplicatedStorage.Shared.Config)
+-- Wait for Config
+local Config
+local success = pcall(function()
+    Config = require(ReplicatedStorage:WaitForChild("Shared", 5):WaitForChild("Config", 5))
+end)
 
--- Wait for Rojo sync
-task.wait(2)
+if not success or not Config then
+    warn("GameManager: Could not load Config, using defaults")
+    Config = {
+        PHASES = { LOBBY = "LOBBY", BUILDING = "BUILDING", COMBAT = "COMBAT", END = "END" },
+        BUILD = { BUILD_TIME = 120, MAX_BLOCKS = 200 },
+        COMBAT = { ROUND_TIME = 180 }
+    }
+end
 
--- Create Remotes folder if missing
+-- Create Remotes folder
 local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
 if not Remotes then
     Remotes = Instance.new("Folder")
@@ -18,19 +28,14 @@ end
 local GameManager = {}
 local currentPhase = Config.PHASES.LOBBY
 local phaseTimer = 0
-local playersInGame = {}
-
--- Require systems
-local BuildingSystem = require(script.Parent.BuildingSystem)
-local CombatSystem = require(script.Parent.CombatSystem)
 
 function GameManager:Init()
     -- Create remote for UI updates
     self.GameStateEvent = Instance.new("RemoteEvent")
     self.GameStateEvent.Name = "GameStateEvent"
-    self.GameStateEvent.Parent = ReplicatedStorage.Remotes
+    self.GameStateEvent.Parent = Remotes
     
-    -- Setup workspace folders
+    -- Setup workspace
     self:SetupWorkspace()
     
     -- Start game loop
@@ -42,6 +47,29 @@ function GameManager:Init()
 end
 
 function GameManager:SetupWorkspace()
+    -- Baseplate
+    if not workspace:FindFirstChild("Baseplate") then
+        local baseplate = Instance.new("Part")
+        baseplate.Name = "Baseplate"
+        baseplate.Size = Vector3.new(512, 1, 512)
+        baseplate.Position = Vector3.new(0, -0.5, 0)
+        baseplate.Anchored = true
+        baseplate.CanCollide = true
+        baseplate.Color = Color3.fromRGB(100, 100, 100)
+        baseplate.Material = Enum.Material.SmoothPlastic
+        baseplate.Parent = workspace
+    end
+    
+    -- Spawn location
+    if not workspace:FindFirstChild("SpawnLocation") then
+        local spawn = Instance.new("SpawnLocation")
+        spawn.Name = "SpawnLocation"
+        spawn.Position = Vector3.new(0, 1, 0)
+        spawn.Anchored = true
+        spawn.CanCollide = false
+        spawn.Parent = workspace
+    end
+    
     -- Buildings folder
     if not workspace:FindFirstChild("Buildings") then
         local buildings = Instance.new("Folder")
@@ -49,17 +77,20 @@ function GameManager:SetupWorkspace()
         buildings.Parent = workspace
     end
     
-    -- Spawn locations
+    -- Spawn locations for teams
     if not workspace:FindFirstChild("SpawnLocations") then
         local spawns = Instance.new("Folder")
         spawns.Name = "SpawnLocations"
         spawns.Parent = workspace
         
-        -- Create team spawn areas
         for i = 1, 4 do
-            local spawn = Instance.new("SpawnLocation")
+            local spawn = Instance.new("Part")
             spawn.Name = "Team" .. i .. "Spawn"
-            spawn.Position = Vector3.new((i-2.5) * 100, 10, 0)
+            spawn.Size = Vector3.new(10, 1, 10)
+            spawn.Position = Vector3.new((i-2.5) * 100, 0.5, 0)
+            spawn.Anchored = true
+            spawn.CanCollide = true
+            spawn.Color = Color3.fromRGB(75, 75, 75)
             spawn.Parent = spawns
             
             -- Build zone
@@ -68,9 +99,9 @@ function GameManager:SetupWorkspace()
             zone.Size = Vector3.new(80, 1, 80)
             zone.Position = Vector3.new((i-2.5) * 100, 0.5, 0)
             zone.Color = Color3.fromRGB(100, 100, 100)
+            zone.Transparency = 0.5
             zone.Anchored = true
             zone.CanCollide = true
-            zone.Transparency = 0.5
             zone.Parent = workspace
         end
     end
@@ -78,26 +109,24 @@ end
 
 function GameManager:GameLoop()
     while true do
-        -- LOBBY PHASE (30 seconds)
+        -- LOBBY PHASE
         self:SetPhase(Config.PHASES.LOBBY)
         self:Broadcast("Waiting for players...")
-        self:WaitForPlayers(2) -- Minimum 2 players
-        self:Countdown(30)
+        self:WaitForPlayers(1)
+        self:Countdown(10)
         
         -- BUILDING PHASE
         self:SetPhase(Config.PHASES.BUILDING)
         self:Broadcast("BUILD PHASE! Create your fortress!")
-        self:EnableBuilding(true)
-        self:Countdown(Config.BUILD.BUILD_TIME)
-        self:EnableBuilding(false)
+        local buildTime = (Config.BUILD and Config.BUILD.BUILD_TIME) or 120
+        self:Countdown(buildTime)
         
         -- COMBAT PHASE
         self:SetPhase(Config.PHASES.COMBAT)
         self:Broadcast("COMBAT PHASE! Destroy enemy bases!")
-        CombatSystem:SetCombatState(true)
+        local combatTime = (Config.COMBAT and Config.COMBAT.ROUND_TIME) or 180
         self:TeleportToBuildZones()
-        self:Countdown(Config.COMBAT.ROUND_TIME)
-        CombatSystem:SetCombatState(false)
+        self:Countdown(combatTime)
         
         -- END PHASE
         self:SetPhase(Config.PHASES.END)
@@ -105,59 +134,14 @@ function GameManager:GameLoop()
         self:ClearBuildings()
         self:ResetPlayers()
         
-        task.wait(10)
+        task.wait(5)
     end
 end
 
 function GameManager:SetPhase(phase)
     currentPhase = phase
     self.GameStateEvent:FireAllClients(phase)
-    print("🎮 Phase changed to:", phase)
-end
-
-function GameManager:GetCurrentPhase()
-    return currentPhase
-end
-
-function GameManager:EnableBuilding(enabled)
-    for _, player in ipairs(Players:GetPlayers()) do
-        local tool = require(player.PlayerScripts:WaitForChild("BuildTool"))
-        if tool then
-            tool:SetBuildingEnabled(enabled)
-        end
-    end
-end
-
-function GameManager:TeleportToBuildZones()
-    local players = Players:GetPlayers()
-    for i, player in ipairs(players) do
-        local char = player.Character
-        if char then
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if root then
-                local zoneNum = ((i - 1) % 4) + 1
-                local spawnPos = Vector3.new((zoneNum - 2.5) * 100, 20, 0)
-                root.CFrame = CFrame.new(spawnPos)
-            end
-        end
-    end
-end
-
-function GameManager:ClearBuildings()
-    for _, block in ipairs(workspace.Buildings:GetChildren()) do
-        block:Destroy()
-    end
-end
-
-function GameManager:ResetPlayers()
-    for _, player in ipairs(Players:GetPlayers()) do
-        player:LoadCharacter()
-        
-        -- Clear build tracking
-        if BuildingSystem.ClearPlayerBuilds then
-            BuildingSystem:ClearPlayerBuilds(player)
-        end
-    end
+    print("🎮 Phase:", phase)
 end
 
 function GameManager:Broadcast(message)
@@ -176,10 +160,43 @@ end
 
 function GameManager:WaitForPlayers(minPlayers)
     while #Players:GetPlayers() < minPlayers do
-        self:Broadcast("Need " .. (minPlayers - #Players:GetPlayers()) .. " more player(s)...")
-        task.wait(3)
+        task.wait(1)
     end
 end
 
-GameManager:Init()
+function GameManager:TeleportToBuildZones()
+    local players = Players:GetPlayers()
+    for i, player in ipairs(players) do
+        local char = player.Character
+        if char then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local zoneNum = ((i - 1) % 4) + 1
+                local spawnPos = Vector3.new((zoneNum - 2.5) * 100, 10, 0)
+                root.CFrame = CFrame.new(spawnPos)
+            end
+        end
+    end
+end
+
+function GameManager:ClearBuildings()
+    local buildings = workspace:FindFirstChild("Buildings")
+    if buildings then
+        for _, block in ipairs(buildings:GetChildren()) do
+            block:Destroy()
+        end
+    end
+end
+
+function GameManager:ResetPlayers()
+    for _, player in ipairs(Players:GetPlayers()) do
+        player:LoadCharacter()
+    end
+end
+
+-- Initialize with delay
+task.delay(4, function()
+    GameManager:Init()
+end)
+
 return GameManager
