@@ -8,6 +8,11 @@ local currentPhase = "LOBBY"
 local phaseStartTime = 0
 local gameActive = false
 
+-- Load systems
+local DataService = require(script.Parent.DataService)
+local BuildingSystem = require(script.Parent.BuildingSystem)
+local CombatSystem = require(script.Parent.CombatSystem)
+
 -- Remotes
 local Remotes = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
 Remotes.Name = "Remotes"
@@ -18,6 +23,11 @@ GameStateEvent.Name = "GameStateEvent"
 GameStateEvent.Parent = Remotes
 
 function GameManager:Init()
+    -- Setup systems in order
+    BuildingSystem:SetDataService(DataService)
+    BuildingSystem:Init()
+    CombatSystem:Init()
+    
     self:SetupSpawnLocations()
     
     -- Start game loop
@@ -166,12 +176,7 @@ end
 -- Reset round
 function GameManager:ResetRound()
     -- Clear all builds
-    local buildsFolder = workspace:FindFirstChild("Builds")
-    if buildsFolder then
-        for _, build in ipairs(buildsFolder:GetChildren()) do
-            build:Destroy()
-        end
-    end
+    BuildingSystem:ClearAllBuilds()
     
     -- Reset players
     for _, player in ipairs(Players:GetPlayers()) do

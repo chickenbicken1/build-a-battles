@@ -26,9 +26,9 @@ local materials = {
     METAL = 0
 }
 
-local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-local PlaceBuildEvent = Remotes:WaitForChild("PlaceBuild")
-local MaterialUpdateEvent = Remotes:WaitForChild("MaterialUpdate")
+-- Remotes (initialized in ConnectEvents)
+local PlaceBuildEvent = nil
+local MaterialUpdateEvent = nil
 
 -- Color shortcuts
 local C = Config.COLORS
@@ -37,7 +37,12 @@ function BuildController:Init()
     self:CreateUI()
     self:CreateGhostBuild()
     self:SetupInputs()
-    self:ConnectEvents()
+    
+    -- Wait a bit for remotes to be created
+    task.delay(2, function()
+        self:ConnectEvents()
+    end)
+    
     print("✅ Build Controller Initialized")
 end
 
@@ -349,6 +354,21 @@ end
 
 -- Connect events
 function BuildController:ConnectEvents()
+    -- Wait for remotes with timeout
+    local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+    if not Remotes then
+        warn("BuildController: Remotes folder not found!")
+        return
+    end
+    
+    PlaceBuildEvent = Remotes:WaitForChild("PlaceBuild", 10)
+    MaterialUpdateEvent = Remotes:WaitForChild("MaterialUpdate", 10)
+    
+    if not PlaceBuildEvent or not MaterialUpdateEvent then
+        warn("BuildController: Required remotes not found!")
+        return
+    end
+    
     -- Update materials
     MaterialUpdateEvent.OnClientEvent:Connect(function(newMaterials)
         materials = newMaterials

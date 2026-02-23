@@ -173,5 +173,5 @@ function CombatSystem:HandleDeath(player)
     end)
 end
 
-CombatSystem:Init()
+-- Init is called by GameManager
 return CombatSystem

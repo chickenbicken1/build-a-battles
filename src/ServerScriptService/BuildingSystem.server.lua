@@ -21,8 +21,12 @@ local MaterialUpdateEvent = Instance.new("RemoteEvent")
 MaterialUpdateEvent.Name = "MaterialUpdate"
 MaterialUpdateEvent.Parent = Remotes
 
--- Get DataService reference
-local DataService = require(script.Parent.DataService)
+-- DataService reference (set by GameManager)
+local DataService = nil
+
+function BuildingSystem:SetDataService(service)
+    DataService = service
+end
 
 function BuildingSystem:Init()
     -- Create builds folder
@@ -42,8 +46,12 @@ function BuildingSystem:Init()
     task.spawn(function()
         while true do
             task.wait(5)
-            for _, player in ipairs(Players:GetPlayers()) do
-                DataService:AddMaterial(player, "WOOD", 5)
+            if DataService then
+                for _, player in ipairs(Players:GetPlayers()) do
+                    pcall(function()
+                        DataService:AddMaterial(player, "WOOD", 5)
+                    end)
+                end
             end
         end
     end)
@@ -113,7 +121,7 @@ function BuildingSystem:HandleBuildRequest(player, pieceType, position, normal, 
     
     -- Check materials (cost = 10)
     local cost = 10
-    if not DataService:RemoveMaterial(player, materialType, cost) then
+    if DataService and not DataService:RemoveMaterial(player, materialType, cost) then
         return false, "Not enough materials"
     end
     
@@ -123,11 +131,15 @@ function BuildingSystem:HandleBuildRequest(player, pieceType, position, normal, 
     end)
     
     if success and result then
-        DataService:TrackBuild(player, result)
+        if DataService then
+            DataService:TrackBuild(player, result)
+        end
         return true, result
     else
         -- Refund materials on failure
-        DataService:AddMaterial(player, materialType, cost)
+        if DataService then
+            DataService:AddMaterial(player, materialType, cost)
+        end
         return false, "Build failed"
     end
 end
@@ -249,9 +261,11 @@ function BuildingSystem:DestroyBuild(build, destroyer)
     
     -- Drop some materials (30% of cost)
     local materialType = build:GetAttribute("MaterialType")
-    if materialType and destroyer then
+    if materialType and destroyer and DataService then
         local dropAmount = math.random(1, 3)
-        DataService:AddMaterial(destroyer, materialType, dropAmount)
+        pcall(function()
+            DataService:AddMaterial(destroyer, materialType, dropAmount)
+        end)
     end
     
     build:Destroy()
