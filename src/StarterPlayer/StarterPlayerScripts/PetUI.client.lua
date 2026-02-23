@@ -206,9 +206,24 @@ function PetUI:ConnectEvents()
     DataUpdateEvent.OnClientEvent:Connect(function(type, data)
         if type == "SYNC" then
             self:UpdatePets(data.equippedPets or {}, data.totalLuck)
+            
+            -- Store all pets for inventory
+            if data.allPets then
+                -- Could update a pet inventory UI here
+            end
         end
     end)
 end
+
+-- Toggle Pet Inventory with P
+local UserInputService = game:GetService("UserInputService")
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.P then
+        -- Could toggle pet inventory UI
+        print("Open Pet Inventory (TODO)")
+    end
+end)
 
 PetUI:Init()
 return PetUI

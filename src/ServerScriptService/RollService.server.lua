@@ -38,17 +38,47 @@ function RollService:InitPlayer(player)
         inventory = {}, -- {auraId, rollDate}
         equippedAura = nil,
         equippedPets = {}, -- Max 3 pets
+        pets = {}, -- Owned pets
         totalLuck = 1,
         rollCount = 0,
-        gems = 0
+        gems = 100 -- Starter gems
     }
     
     -- Give starter common aura
     self:GiveAura(player, "glowing")
     self:EquipAura(player, "glowing")
     
+    -- Give starter pet
+    self:GivePet(player, "skibidi")
+    self:EquipPet(player, "skibidi")
+    
     print(string.format("🎲 Initialized player %s", player.Name))
     self:SyncData(player)
+end
+
+-- Give pet to player
+function RollService:GivePet(player, petId)
+    local data = playerData[player.UserId]
+    if not data then return false end
+    
+    if not data.pets then data.pets = {} end
+    table.insert(data.pets, petId)
+    
+    return true
+end
+
+-- Get inventory data for client
+function RollService:GetInventory(player)
+    local data = playerData[player.UserId]
+    if not data then return {} end
+    return data.inventory or {}
+end
+
+-- Get pets data for client
+function RollService:GetPets(player)
+    local data = playerData[player.UserId]
+    if not data then return {} end
+    return data.pets or {}
 end
 
 -- Calculate total luck from equipped pets
@@ -79,8 +109,21 @@ function RollService:Roll(player)
     -- Calculate luck
     local luck = self:CalculateLuck(player)
     
+    -- Build weighted table from auras with rarity chances
+    local weightedAuras = {}
+    for _, aura in ipairs(Config.AURAS) do
+        local rarityConfig = Config.RARITIES[aura.rarity]
+        if rarityConfig then
+            table.insert(weightedAuras, {
+                aura = aura,
+                chance = rarityConfig.chance
+            })
+        end
+    end
+    
     -- Roll using weighted random
-    local rolledAura = Utils.WeightedRandom(Config.AURAS, luck)
+    local rolled = Utils.WeightedRandom(weightedAuras, luck)
+    local rolledAura = rolled and rolled.aura or Config.AURAS[1]
     
     -- Give the aura
     self:GiveAura(player, rolledAura.id)
@@ -227,9 +270,21 @@ function RollService:SyncData(player)
         end
     end
     
+    -- Get all pets info
+    local allPetsInfo = {}
+    for _, petId in ipairs(data.pets or {}) do
+        for _, pet in ipairs(Config.PETS) do
+            if pet.id == petId then
+                table.insert(allPetsInfo, pet)
+                break
+            end
+        end
+    end
+    
     DataUpdateEvent:FireClient(player, "SYNC", {
         equippedAura = equippedAuraInfo,
         equippedPets = equippedPetsInfo,
+        allPets = allPetsInfo,
         totalLuck = data.totalLuck,
         rollCount = data.rollCount,
         gems = data.gems,
@@ -241,6 +296,11 @@ end
 function RollService:GetPlayerData(player)
     return playerData[player.UserId]
 end
+
+-- Setup Inventory Remote
+local InventoryEvent = Instance.new("RemoteEvent")
+InventoryEvent.Name = "InventoryEvent"
+InventoryEvent.Parent = Remotes
 
 -- Handle roll request
 RollEvent.OnServerEvent:Connect(function(player)
@@ -266,6 +326,20 @@ EquipPetEvent.OnServerEvent:Connect(function(player, petId, action)
     elseif action == "UNEQUIP" then
         local success = RollService:UnequipPet(player, petId)
         EquipPetEvent:FireClient(player, success and "SUCCESS" or "FAILED")
+    end
+end)
+
+-- Handle inventory requests
+InventoryEvent.OnServerEvent:Connect(function(player, action, data)
+    if action == "GET_INVENTORY" then
+        local inventory = RollService:GetInventory(player)
+        InventoryEvent:FireClient(player, "INVENTORY_DATA", inventory)
+    elseif action == "EQUIP_AURA" then
+        local success = RollService:EquipAura(player, data)
+        InventoryEvent:FireClient(player, success and "EQUIP_SUCCESS" or "EQUIP_FAILED")
+    elseif action == "GET_PETS" then
+        local pets = RollService:GetPets(player)
+        InventoryEvent:FireClient(player, "PETS_DATA", pets)
     end
 end)
 

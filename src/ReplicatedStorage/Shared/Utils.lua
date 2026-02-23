@@ -5,12 +5,15 @@ local Utils = {}
 function Utils.WeightedRandom(items, luckMultiplier)
     luckMultiplier = luckMultiplier or 1
     
+    if #items == 0 then return nil end
+    
     -- Calculate total weight with luck
     local totalWeight = 0
     local weightedItems = {}
     
     for _, item in ipairs(items) do
-        local weight = item.chance * luckMultiplier
+        local chance = item.chance or 0.1
+        local weight = chance * luckMultiplier
         totalWeight = totalWeight + weight
         table.insert(weightedItems, {
             item = item,
@@ -29,7 +32,7 @@ function Utils.WeightedRandom(items, luckMultiplier)
         end
     end
     
-    return items[1] -- Fallback
+    return items[#items].item -- Fallback to last
 end
 
 -- Simple random selection from weighted table
