@@ -4,6 +4,7 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
       "Shared": {
         "$className": "Folder",
         "$path": "src/ReplicatedStorage/Shared"
@@ -15,18 +16,24 @@
     },
     "ServerScriptService": {
       "$className": "ServerScriptService",
+      "$ignoreUnknownInstances": true,
       "$path": "src/ServerScriptService"
     },
     "StarterPlayer": {
       "$className": "StarterPlayer",
+      "$ignoreUnknownInstances": true,
       "StarterCharacterScripts": {
         "$className": "StarterCharacterScripts",
         "$path": "src/StarterPlayer/StarterCharacterScripts"
+      },
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
       }
     },
     "Workspace": {
       "$className": "Workspace",
-      "$path": "src/Workspace"
+      "$ignoreUnknownInstances": true
     }
   }
 }
