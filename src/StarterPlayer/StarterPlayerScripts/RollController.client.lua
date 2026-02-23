@@ -227,7 +227,10 @@ end
 
 -- Do a roll
 function RollController:DoRoll()
-    if isRolling then return end
+    if isRolling then 
+        print("Already rolling, please wait...")
+        return 
+    end
     
     isRolling = true
     
@@ -253,6 +256,16 @@ function RollController:DoRoll()
     
     -- Send request to server
     RollEvent:FireServer()
+    
+    -- Safety timeout - reset after 5 seconds if no response
+    task.delay(5, function()
+        if isRolling then
+            print("Roll timeout - resetting")
+            isRolling = false
+            uiElements.rollAnimFrame.Visible = false
+            uiElements.rollBtn.Visible = true
+        end
+    end)
 end
 
 -- Handle roll result

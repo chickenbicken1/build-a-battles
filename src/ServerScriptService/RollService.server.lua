@@ -104,7 +104,10 @@ end
 -- Roll for an aura
 function RollService:Roll(player)
     local data = playerData[player.UserId]
-    if not data then return nil end
+    if not data then 
+        warn("Roll failed: No player data for " .. player.Name)
+        return nil 
+    end
     
     -- Calculate luck
     local luck = self:CalculateLuck(player)
@@ -122,8 +125,16 @@ function RollService:Roll(player)
     end
     
     -- Roll using weighted random
-    local rolled = Utils.WeightedRandom(weightedAuras, luck)
-    local rolledAura = rolled and rolled.aura or Config.AURAS[1]
+    local success, result = pcall(function()
+        return Utils.WeightedRandom(weightedAuras, luck)
+    end)
+    
+    if not success then
+        warn("Roll error: " .. tostring(result))
+        return nil
+    end
+    
+    local rolledAura = result and result.aura or Config.AURAS[1]
     
     -- Give the aura
     self:GiveAura(player, rolledAura.id)
