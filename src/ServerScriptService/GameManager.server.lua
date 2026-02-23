@@ -4,6 +4,17 @@ local Players = game:GetService("Players")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 
+-- Wait for Rojo sync
+task.wait(2)
+
+-- Create Remotes folder if missing
+local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+if not Remotes then
+    Remotes = Instance.new("Folder")
+    Remotes.Name = "Remotes"
+    Remotes.Parent = ReplicatedStorage
+end
+
 local GameManager = {}
 local currentPhase = Config.PHASES.LOBBY
 local phaseTimer = 0

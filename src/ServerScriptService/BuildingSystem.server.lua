@@ -3,7 +3,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local BuildEvents = ReplicatedStorage.Remotes.BuildEvents
+
+-- Create Remotes folder if missing
+local BuildEvents = ReplicatedStorage:FindFirstChild("Remotes")
+if not BuildEvents then
+    BuildEvents = Instance.new("Folder")
+    BuildEvents.Name = "Remotes"
+    BuildEvents.Parent = ReplicatedStorage
+end
 
 local BuildingSystem = {}
 local playerBuilds = {} -- Store each player's structures

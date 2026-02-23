@@ -2,6 +2,17 @@
   "name": "BuildABattles",
   "tree": {
     "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": {
+        "$className": "Folder",
+        "$path": "src/ReplicatedStorage/Shared"
+      },
+      "Remotes": {
+        "$className": "Folder",
+        "$path": "src/ReplicatedStorage/Remotes"
+      }
+    },
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "$path": "src/ServerScriptService"
@@ -12,10 +23,6 @@
         "$className": "StarterCharacterScripts",
         "$path": "src/StarterPlayer/StarterCharacterScripts"
       }
-    },
-    "ReplicatedStorage": {
-      "$className": "ReplicatedStorage",
-      "$path": "src/ReplicatedStorage"
     },
     "Workspace": {
       "$className": "Workspace",
