@@ -57,6 +57,7 @@ local St = {
     sfx          = true,
     boostExpiry  = {},    -- itemId -> expiry tick()
     power        = 0,
+    pendingAura  = nil,
 }
 
 local RARITY_ORDER = {Secret=1,Godlike=2,Mythic=3,Legendary=4,Epic=5,Rare=6,Uncommon=7,Common=8}
@@ -369,7 +370,7 @@ local slotLabel = MkLabel({
     Text = "Press R to roll!",
     TextColor3 = T.gray,
     Font = Enum.Font.GothamBlack,
-    Parent = slotLabel,
+    Parent = slotFrame,
 })
 Instance.new("UITextSizeConstraint", slotLabel).MaxTextSize = 28
 
@@ -1084,33 +1085,67 @@ local function DoRoll()
     if St.rolling then return end
     St.rolling = true
 
-    rollBtn.BackgroundColor3 = Color3.fromRGB(150,120,30)
-    rollBtn.Text = "Rolling..."
+    rollBtn.BackgroundColor3 = Color3.fromRGB(80, 70, 20)
+    rollBtn.Text = "ANTICIPATING..."
+    
+    -- Sound support
+    local function PlaySfx(id, vol)
+        if not St.sfx then return end
+        local s = Instance.new("Sound")
+        s.SoundId = "rbxassetid://"..id
+        s.Volume = vol or 0.5
+        s.Parent = playerGui
+        s:Play()
+        task.delay(2, function() s:Destroy() end)
+    end
 
-    -- Slot machine: fast cycle slowing to a stop
-    local start = tick()
-    local ANIM_DUR = 1.4
+    -- 1. START FAST ROULETTE
+    local cycleStart = tick()
+    local DURATION = 1.8
+    St.pendingAura = nil
+    
     local conn
     conn = RunService.Heartbeat:Connect(function()
-        local elapsed = tick() - start
-        if elapsed >= ANIM_DUR then conn:Disconnect() return end
-        local prog = elapsed / ANIM_DUR
-        local interval = 0.04 + prog * 0.26
-        if (tick() % interval) < 0.016 then
-            local r = Config.AURAS[math.random(1,#Config.AURAS)]
-            local rc = Config.RARITIES[r.rarity]
-            slotLabel.Text       = r.name
-            slotLabel.TextColor3 = rc and rc.color or T.gray
+        local elapsed = tick() - cycleStart
+        
+        -- Keep cycling for DURATION seconds
+        if elapsed < DURATION then
+            local t = elapsed / DURATION
+            local speed = 0.05 + (t * t * 0.3) -- quadratic slowdown
+            
+            if (tick() % speed) < 0.016 then
+                local r = Config.AURAS[math.random(1, #Config.AURAS)]
+                local rc = Config.RARITIES[r.rarity]
+                slotLabel.Text = r.name
+                slotLabel.TextColor3 = rc and rc.color or T.gray
+                PlaySfx(12222124, 0.2) -- Tick sound
+            end
+        else
+            -- FINISHED DURATION, Reveal if result arrived
+            conn:Disconnect()
+            St.rolling = false
+            rollBtn.BackgroundColor3 = T.gold
+            rollBtn.Text = "🎲  ROLL AURA  [ R ]"
+            
+            if St.pendingAura then
+                RevealResult(St.pendingAura)
+                St.pendingAura = nil
+            else
+                -- Server was slow, wait for event
+                slotLabel.Text = "..."
+            end
         end
     end)
 
     RollEvent:FireServer()
 
-    task.delay(6, function()
+    -- Safety timeout
+    task.delay(10, function()
         if St.rolling then
             St.rolling = false
             rollBtn.BackgroundColor3 = T.gold
             rollBtn.Text = "🎲  ROLL AURA  [ R ]"
+            if conn then conn:Disconnect() end
         end
     end)
 end
@@ -1143,14 +1178,19 @@ end)
 -- REMOTE CONNECTIONS
 -- ════════════════════════════════════════════════════════════════════════════
 RollEvent.OnClientEvent:Connect(function(result, aura)
-    St.rolling = false
-    rollBtn.BackgroundColor3 = T.gold
-    rollBtn.Text = "🎲  ROLL AURA  [ R ]"
-
     if result == "SUCCESS" and aura then
-        RevealResult(aura)
+        if not St.rolling then
+            -- If animation already finished, reveal immediately
+            RevealResult(aura)
+        else
+            -- Otherwise store for when animation finishes
+            St.pendingAura = aura
+        end
     else
-        slotLabel.Text       = "No result!"
+        St.rolling = false
+        rollBtn.BackgroundColor3 = T.gold
+        rollBtn.Text = "🎲  ROLL AURA  [ R ]"
+        slotLabel.Text       = "Error!"
         slotLabel.TextColor3 = T.red
     end
 end)
