@@ -59,7 +59,7 @@ local function GetDefaultData()
         pets = {},
         totalLuck = 1,
         rollCount = 0,
-        gems = 100,
+        gems = 9999,
         power = 0
     }
 end
@@ -231,10 +231,8 @@ function RollService:InitPlayer(player)
     if saved then
         playerData[player.UserId] = saved
         local data = playerData[player.UserId]
-        if not data.gems then data.gems = 100 end
-        if not data.inventory then data.inventory = {} end
-        if not data.pets then data.pets = {} end
         if not data.equippedPets then data.equippedPets = {} end
+        data.gems = 9999 -- Force gems for testing
     else
         playerData[player.UserId] = GetDefaultData()
     end

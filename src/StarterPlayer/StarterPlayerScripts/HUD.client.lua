@@ -303,6 +303,30 @@ local luckLabel = MkLabel({
 })
 Instance.new("UITextSizeConstraint", luckLabel).MaxTextSize = 14
 
+-- ── Gems Display (Top Right) ────────────────────────────────────────────────
+local gemsGui = MkFrame({
+    Name = "GemsGui",
+    Size = UDim2.new(0.12, 0, 0.06, 0),
+    Position = UDim2.new(0.98, 0, 0.02, 0),
+    AnchorPoint = Vector2.new(1, 0),
+    BackgroundColor3 = T.panel,
+    ZIndex = 30,
+    Parent = gui,
+})
+RC(gemsGui, 12) ; STK(gemsGui, T.gold)
+Pad(gemsGui, 0, 10, 0, 10)
+
+local gemsLbl = MkLabel({
+    Name = "GemsLabel",
+    Size = UDim2.fromScale(1, 1),
+    Text = "💎 9,999",
+    TextColor3 = T.gold,
+    Font = Enum.Font.GothamBlack,
+    TextXAlignment = Enum.TextXAlignment.Right,
+    Parent = gemsGui,
+})
+Instance.new("UITextSizeConstraint", gemsLbl).MaxTextSize = 22
+
 -- ── Roll Panel (bottom-center, always visible) ────────────────────────────
 local rollPanel = MkFrame({
     Name = "RollPanel",
@@ -1036,10 +1060,16 @@ local function UpdateStats(d)
         St.power = d.power
         powerLabel.Text = "POWER: "..Utils.FormatNumber(d.power)
     end
+    lblRolls.Text = "🎲 " .. (d.rollCount or 0)
+    lblLuck.Text  = "🍀 " .. string.format("%.2fx", d.totalLuck or 1)
+    lblGems.Text  = "💎 " .. (d.gems or 0)
+    
+    if gemsLbl then gemsLbl.Text = "💎 " .. (d.gems or 0) end
+
     if d.equippedAura then
         St.equippedAura = d.equippedAura
         local rc = Config.RARITIES[d.equippedAura.rarity]
-        eqNameLbl.Text       = d.equippedAura.name
+        eqNameLbl.Text       = d.equippedAura.name .. " [" .. (d.equippedAura.power or 10) .. "]"
         eqNameLbl.TextColor3 = rc and rc.color or T.white
     end
     if d.equippedPets then St.equippedPets = d.equippedPets end
@@ -1049,7 +1079,7 @@ end
 
 local function RevealResult(aura)
     local col = Config.RARITIES[aura.rarity].color or T.white
-    slotLabel.Text = aura.name
+    slotLabel.Text = string.format("%s [%d]", aura.name, aura.power or 10)
     slotLabel.TextColor3 = col
     task.delay(0.5, function()
         TweenService:Create(slotFrame, TweenInfo.new(0.15), {Size=UDim2.new(1,0,0.32,0)}):Play()
@@ -1107,7 +1137,7 @@ local function DoRoll()
             if (tick() % speed) < 0.016 then
                 local r = Config.AURAS[math.random(1, #Config.AURAS)]
                 local rc = Config.RARITIES[r.rarity]
-                slotLabel.Text = r.name
+                slotLabel.Text = string.format("%s [%d]", r.name, r.power or 10)
                 slotLabel.TextColor3 = rc and rc.color or T.gray
                 PlaySfx(12222124, 0.2) -- Tick sound
             end
