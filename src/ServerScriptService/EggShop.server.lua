@@ -184,10 +184,10 @@ function EggShop:PromptOpenEgg(player, eggType)
     if not eggConfig then return end
     
     -- Check if player has enough gems
-    local data = playerData[player.UserId]
-    if not data then return end
+    local pd = rollService and rollService.playerData[player.UserId]
+    if not pd then return end
     
-    if data.gems < eggConfig.cost then
+    if pd.gems < eggConfig.cost then
         EggEvent:FireClient(player, "ERROR", string.format("Need %d gems!", eggConfig.cost))
         return
     end
@@ -206,15 +206,15 @@ function EggShop:OpenEgg(player, eggType)
     if not eggConfig then return nil end
     
     -- Check gems again
-    local data = playerData[player.UserId]
-    if not data then return nil end
+    local pd = rollService and rollService.playerData[player.UserId]
+    if not pd then return nil end
     
-    if data.gems < eggConfig.cost then
+    if pd.gems < eggConfig.cost then
         return nil
     end
     
     -- Deduct gems
-    data.gems = data.gems - eggConfig.cost
+    pd.gems = pd.gems - eggConfig.cost
     
     -- Roll for pet
     local roll = math.random()
@@ -244,9 +244,9 @@ function EggShop:OpenEgg(player, eggType)
     end
     
     if petConfig then
-        -- Add pet to inventory (stored in RollService)
-        if not data.pets then data.pets = {} end
-        table.insert(data.pets, wonPet)
+        -- Add pet to inventory
+        if not pd.pets then pd.pets = {} end
+        table.insert(pd.pets, wonPet)
         
         -- Notify client
         EggEvent:FireClient(player, "EGG_OPENED", {

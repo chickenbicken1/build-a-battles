@@ -303,18 +303,17 @@ local luckLabel = MkLabel({
 })
 Instance.new("UITextSizeConstraint", luckLabel).MaxTextSize = 14
 
--- ── Gems Display (Top Right) ────────────────────────────────────────────────
+-- ── Gems Display (Simplified Top Right) ──────────────────────────────────
 local gemsGui = MkFrame({
     Name = "GemsGui",
-    Size = UDim2.new(0.12, 0, 0.06, 0),
-    Position = UDim2.new(0.98, 0, 0.02, 0),
+    Size = UDim2.new(0, 120, 0, 36),
+    Position = UDim2.new(1, -10, 0, 10),
     AnchorPoint = Vector2.new(1, 0),
     BackgroundColor3 = T.panel,
     ZIndex = 30,
     Parent = gui,
 })
-RC(gemsGui, 12) ; STK(gemsGui, T.gold)
-Pad(gemsGui, 0, 10, 0, 10)
+RC(gemsGui, 10) ; STK(gemsGui, T.gold)
 
 local gemsLbl = MkLabel({
     Name = "GemsLabel",
@@ -322,10 +321,9 @@ local gemsLbl = MkLabel({
     Text = "💎 9,999",
     TextColor3 = T.gold,
     Font = Enum.Font.GothamBlack,
-    TextXAlignment = Enum.TextXAlignment.Right,
     Parent = gemsGui,
 })
-Instance.new("UITextSizeConstraint", gemsLbl).MaxTextSize = 22
+Instance.new("UITextSizeConstraint", gemsLbl).MaxTextSize = 18
 
 -- ── Roll Panel (bottom-center, always visible) ────────────────────────────
 local rollPanel = MkFrame({
@@ -418,12 +416,13 @@ local function StatLbl(name, text, color, order)
         Text=text, TextColor3=color or T.gray,
         LayoutOrder=order, Parent=statsRow,
     })
-    Instance.new("UITextSizeConstraint", l).MaxTextSize = 15
+    Instance.new("UITextSizeConstraint", l).MaxTextSize = 14
+    l.Font = Enum.Font.GothamBold
     return l
 end
 local lblRolls    = StatLbl("RollsLbl","🎲 0",     T.gray,  1)
-local lblLuck     = StatLbl("LuckLbl", "🍀 1.00x", T.green, 2)
-local lblGems     = StatLbl("GemsLbl", "💎 100",   T.gold,  3)
+local lblLuck     = StatLbl("LuckLbl", "🍀 1x",    T.green, 2)
+local lblGems     = StatLbl("GemsBtnLbl", "💎 0",  T.gold,  3) -- Reference for cleanup
 
 -- Equipped row
 local eqRow = MkFrame({
@@ -502,7 +501,8 @@ local function SetPanel(id)
 end
 
 -- Collapse/expand sidebar button at top
-local collapseBtn = MkBtn({
+local collapseBtn -- Forward declare to fix crash
+collapseBtn = MkBtn({
     Size = UDim2.new(1, -8, 0, 36),
     BackgroundColor3 = T.card,
     Text = "❮❮", TextColor3 = T.gray,
@@ -1050,30 +1050,39 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 local function UpdateStats(d)
     if d.totalLuck  then 
-        St.luck  = d.totalLuck  
-        lblLuck.Text  = "🍀 "..Utils.FormatLuck(d.totalLuck)
-        luckLabel.Text = "LUCK: "..Utils.FormatLuck(d.totalLuck)
+        St.luck = d.totalLuck  
+        lblLuck.Text = "🍀 "..Utils.FormatLuck(d.totalLuck)
+        if powerLabel then powerLabel.Text = "LUCK: "..Utils.FormatLuck(d.totalLuck) end
     end
-    if d.rollCount  then St.rolls = d.rollCount   ; lblRolls.Text = "🎲 "..Utils.FormatNumber(d.rollCount) end
-    if d.gems       then St.gems  = d.gems        ; lblGems.Text  = "💎 "..Utils.FormatNumber(d.gems) end
-    if d.power      then
-        St.power = d.power
-        powerLabel.Text = "POWER: "..Utils.FormatNumber(d.power)
-    end
-    lblRolls.Text = "🎲 " .. (d.rollCount or 0)
-    lblLuck.Text  = "🍀 " .. string.format("%.2fx", d.totalLuck or 1)
-    lblGems.Text  = "💎 " .. (d.gems or 0)
+    if d.rollCount  then St.rolls = d.rollCount ; lblRolls.Text = "🎲 "..Utils.FormatNumber(d.rollCount) end
+    if d.gems       then St.gems  = d.gems  ; lblGems.Text = "💎 "..Utils.FormatNumber(d.gems) end
     
-    if gemsLbl then gemsLbl.Text = "💎 " .. (d.gems or 0) end
+    if gemsLbl then gemsLbl.Text = "💎 " .. Utils.FormatNumber(d.gems or St.gems or 0) end
 
     if d.equippedAura then
-        St.equippedAura = d.equippedAura
-        local rc = Config.RARITIES[d.equippedAura.rarity]
-        eqNameLbl.Text       = d.equippedAura.name .. " [" .. (d.equippedAura.power or 10) .. "]"
-        eqNameLbl.TextColor3 = rc and rc.color or T.white
+        -- Find aura info
+        local auraId = (type(d.equippedAura) == "table") and d.equippedAura.id or d.equippedAura
+        local auraInfo = nil
+        for _, a in ipairs(Config.AURAS) do
+            if a.id == auraId then auraInfo = a ; break end
+        end
+        
+        if auraInfo then
+            St.equippedAura = auraInfo
+            local rc = Config.RARITIES[auraInfo.rarity]
+            eqNameLbl.Text = string.format("%s [%d]", auraInfo.name, auraInfo.power or 10)
+            eqNameLbl.TextColor3 = rc and rc.color or T.white
+            
+            if eqNameLabel then -- Top panel
+                eqNameLabel.Text = auraInfo.name
+                eqNameLabel.TextColor3 = rc and rc.color or T.white
+                if powerLabel then powerLabel.Text = "POWER: "..Utils.FormatNumber(auraInfo.power or 10) end
+            end
+        end
     end
+    
     if d.equippedPets then St.equippedPets = d.equippedPets end
-    if d.allPets      then St.allPets      = d.allPets end
+    if d.allPets then St.allPets = d.allPets end
     if St._refreshPets and St.activePanel == "pets" then St._refreshPets() end
 end
 

@@ -40,11 +40,9 @@ function EggOpening:CreateUI()
     
     -- Title
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 40)
-    title.BackgroundTransparency = 1
-    title.Text = "Open Egg?"
+    title.Text = "OPEN EGG?"
     title.TextColor3 = C.primary
-    title.TextSize = 28
+    title.TextSize = 24
     title.Font = Enum.Font.GothamBlack
     title.Parent = confirmFrame
     
@@ -54,9 +52,9 @@ function EggOpening:CreateUI()
     eggNameLabel.Size = UDim2.new(1, 0, 0, 30)
     eggNameLabel.Position = UDim2.new(0, 0, 0, 45)
     eggNameLabel.BackgroundTransparency = 1
-    eggNameLabel.Text = "Basic Egg"
+    eggNameLabel.Text = "BASIC EGG"
     eggNameLabel.TextColor3 = C.light
-    eggNameLabel.TextSize = 20
+    eggNameLabel.TextSize = 18
     eggNameLabel.Font = Enum.Font.GothamBold
     eggNameLabel.Parent = confirmFrame
     
@@ -156,12 +154,9 @@ function EggOpening:CreateUI()
     uiElements.resultFrame = resultFrame
     
     -- Result Title
-    local resultTitle = Instance.new("TextLabel")
-    resultTitle.Size = UDim2.new(1, 0, 0, 50)
-    resultTitle.BackgroundTransparency = 1
-    resultTitle.Text = "🎉 YOU GOT!"
+    resultTitle.Text = "🎉 YOU REVEALED!"
     resultTitle.TextColor3 = C.success
-    resultTitle.TextSize = 32
+    resultTitle.TextSize = 28
     resultTitle.Font = Enum.Font.GothamBlack
     resultTitle.Parent = resultFrame
     
