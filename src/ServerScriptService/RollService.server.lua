@@ -179,24 +179,62 @@ function RollService:GetPets(player)
     return data.pets or {}
 end
 
--- Calculate total luck from equipped pets
+-- Calculate total luck from equipped pets and shop boosts
 function RollService:CalculateLuck(player)
     local data = playerData[player.UserId]
     if not data then return 1 end
 
-    local totalLuck = 1
-
+    local petLuck = 1
     for _, petId in ipairs(data.equippedPets) do
         for _, pet in ipairs(Config.PETS) do
             if pet.id == petId then
-                totalLuck = totalLuck + (pet.luckBoost - 1)
+                petLuck = petLuck + (pet.luckBoost - 1)
                 break
             end
         end
     end
 
-    data.totalLuck = totalLuck
-    return totalLuck
+    local finalLuck = petLuck
+    
+    -- Check for shop boosts (intercepted by the patch at bottom if needed, 
+    -- but let's make it explicit here for the sync)
+    if luckBoosts[player.UserId] and tick() < luckBoosts[player.UserId] then
+        finalLuck = finalLuck * 3
+    end
+
+    data.totalLuck = finalLuck
+    return finalLuck
+end
+
+-- Calculate player power (Equipped Aura Power * Pet Luck Multiplier)
+function RollService:CalculatePower(player)
+    local data = playerData[player.UserId]
+    if not data then return 0 end
+
+    local auraPower = 0
+    if data.equippedAura then
+        for _, aura in ipairs(Config.AURAS) do
+            if aura.id == data.equippedAura.id then
+                auraPower = aura.power or 10
+                break
+            end
+        end
+    end
+
+    -- Pet luck boosts your power too!
+    local petLuck = 1
+    for _, petId in ipairs(data.equippedPets) do
+        for _, pet in ipairs(Config.PETS) do
+            if pet.id == petId then
+                petLuck = petLuck + (pet.luckBoost - 1)
+                break
+            end
+        end
+    end
+
+    local power = math.floor(auraPower * petLuck)
+    data.power = power
+    return power
 end
 
 -- Roll for an aura
@@ -382,23 +420,11 @@ function RollService:BroadcastRoll(player, aura)
     end
 end
 
--- Sync player data to client
+-- Sync all data to client
 function RollService:SyncData(player)
     local data = playerData[player.UserId]
     if not data then return end
 
-    -- Get equipped aura info
-    local equippedAuraInfo = nil
-    if data.equippedAura then
-        for _, aura in ipairs(Config.AURAS) do
-            if aura.id == data.equippedAura then
-                equippedAuraInfo = aura
-                break
-            end
-        end
-    end
-
-    -- Get equipped pets info
     local equippedPetsInfo = {}
     for _, petId in ipairs(data.equippedPets) do
         for _, pet in ipairs(Config.PETS) do

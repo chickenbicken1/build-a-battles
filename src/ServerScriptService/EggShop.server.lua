@@ -140,22 +140,42 @@ function EggShop:CreateEggDisplay(eggType, position, color, parent)
             local startY = position.Y
             for i = 0, 360, 5 do
                 if not egg.Parent then break end
-                egg.Position = Vector3.new(position.X, startY + math.sin(math.rad(i)) * 0.5, position.Z)
+                egg.Position = Vector3.new(position.X, startY + (math.sin(math.rad(i)) * 0.5), position.Z)
                 egg.Rotation = Vector3.new(0, i, 0)
                 task.wait(0.05)
             end
         end
     end)
     
-    -- Price label part
-    local labelPart = Instance.new("Part")
-    labelPart.Name = eggType .. "Label"
-    labelPart.Size = Vector3.new(3, 1, 0.5)
-    labelPart.Position = position - Vector3.new(0, 4, 0)
-    labelPart.Anchored = true
-    labelPart.Color = Color3.fromRGB(30, 30, 40)
-    labelPart.Material = Enum.Material.SmoothPlastic
-    labelPart.Parent = parent
+    -- Interaction: ProximityPrompt
+    local prompt = Instance.new("ProximityPrompt")
+    prompt.ObjectText = eggConfig.name
+    prompt.ActionText = string.format("Open (%d Gems)", eggConfig.cost)
+    prompt.KeyboardKeyCode = Enum.KeyCode.E
+    prompt.HoldDuration = 0.5
+    prompt.MaxActivationDistance = 10
+    prompt.Parent = egg
+    
+    prompt.Triggered:Connect(function(player)
+        self:OpenEgg(player, eggType)
+    end)
+
+    -- Price label part (BillboardGui is better for text)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 200, 0, 50)
+    billboard.AlwaysOnTop = true
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Parent = egg
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = string.format("💎 %d\n[E] TO OPEN", eggConfig.cost)
+    label.TextColor3 = color
+    label.TextStrokeTransparency = 0
+    label.Font = Enum.Font.GothamBlack
+    label.TextSize = 14
+    label.Parent = billboard
 end
 
 -- Prompt player to open egg

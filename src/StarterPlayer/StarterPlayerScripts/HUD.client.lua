@@ -56,6 +56,7 @@ local St = {
     autoEquip    = false,
     sfx          = true,
     boostExpiry  = {},    -- itemId -> expiry tick()
+    power        = 0,
 }
 
 local RARITY_ORDER = {Secret=1,Godlike=2,Mythic=3,Legendary=4,Epic=5,Rare=6,Uncommon=7,Common=8}
@@ -253,6 +254,53 @@ local sidePanel = MkFrame({
 })
 RC(sidePanel, 14) ; STK(sidePanel)
 
+-- ── Top-Left Player Stats (Power & Luck) ──────────────────────────────────
+local statsPanel = MkFrame({
+    Name = "TopStats",
+    Size = UDim2.new(0.2, 0, 0, 80),
+    Position = UDim2.new(0, 10, 0, 10),
+    BackgroundColor3 = T.panel,
+    BackgroundTransparency = 0.1,
+    ZIndex = 25,
+    Parent = gui,
+})
+RC(statsPanel, 12) ; STK(statsPanel)
+Pad(statsPanel, 8, 12, 8, 12)
+
+local statsPanelLayout = Instance.new("UIListLayout")
+statsPanelLayout.Padding = UDim.new(0, 4)
+statsPanelLayout.Parent = statsPanel
+
+local nameLabel = MkLabel({
+    Size = UDim2.new(1, 0, 0, 22),
+    Text = player.Name,
+    TextColor3 = T.white,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 26, Parent = statsPanel,
+})
+Instance.new("UITextSizeConstraint", nameLabel).MaxTextSize = 16
+
+local powerLabel = MkLabel({
+    Name = "PowerLabel",
+    Size = UDim2.new(1, 0, 0, 24),
+    Text = "POWER: 0",
+    TextColor3 = T.purple,
+    Font = Enum.Font.GothamBlack,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 26, Parent = statsPanel,
+})
+Instance.new("UITextSizeConstraint", powerLabel).MaxTextSize = 18
+
+local luckLabel = MkLabel({
+    Name = "LuckLabel",
+    Size = UDim2.new(1, 0, 0, 18),
+    Text = "LUCK: 1.00x",
+    TextColor3 = T.green,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 26, Parent = statsPanel,
+})
+Instance.new("UITextSizeConstraint", luckLabel).MaxTextSize = 14
+
 -- ── Roll Panel (bottom-center, always visible) ────────────────────────────
 local rollPanel = MkFrame({
     Name = "RollPanel",
@@ -260,8 +308,8 @@ local rollPanel = MkFrame({
     AnchorPoint = Vector2.new(0.5, 1),
     Position = UDim2.new(0.5, 0, 1, -10),
     BackgroundColor3 = T.panel,
-    BackgroundTransparency = 0.05,
-    ZIndex = 10,
+    BackgroundTransparency = 0, -- Fix transparency issue
+    ZIndex = 30, -- Bring to front
     Parent = gui,
 })
 RC(rollPanel, 14) ; STK(rollPanel)
@@ -318,10 +366,10 @@ RC(slotFrame, 10) ; STK(slotFrame, T.border)
 local slotLabel = MkLabel({
     Name = "SlotLabel",
     Size = UDim2.fromScale(1, 1),
-    Text = "Press SPACE to roll!",
+    Text = "Press R to roll!",
     TextColor3 = T.gray,
     Font = Enum.Font.GothamBlack,
-    Parent = slotFrame,
+    Parent = slotLabel,
 })
 Instance.new("UITextSizeConstraint", slotLabel).MaxTextSize = 28
 
@@ -379,7 +427,7 @@ local rollBtn = MkBtn({
     Name="RollBtn",
     Size=UDim2.new(1,0,0.27,0),
     BackgroundColor3=T.gold,
-    Text="🎲  ROLL AURA  [ SPACE ]",
+    Text="🎲  ROLL AURA  [ R ]",
     TextColor3=T.bg,
     Font=Enum.Font.GothamBlack,
     LayoutOrder=5, Parent=rollPanel,
@@ -974,9 +1022,17 @@ end
 -- ROLL LOGIC
 -- ════════════════════════════════════════════════════════════════════════════
 local function UpdateStats(d)
-    if d.totalLuck  then St.luck  = d.totalLuck  ; lblLuck.Text  = "🍀 "..Utils.FormatLuck(d.totalLuck) end
+    if d.totalLuck  then 
+        St.luck  = d.totalLuck  
+        lblLuck.Text  = "🍀 "..Utils.FormatLuck(d.totalLuck)
+        luckLabel.Text = "LUCK: "..Utils.FormatLuck(d.totalLuck)
+    end
     if d.rollCount  then St.rolls = d.rollCount   ; lblRolls.Text = "🎲 "..Utils.FormatNumber(d.rollCount) end
     if d.gems       then St.gems  = d.gems        ; lblGems.Text  = "💎 "..Utils.FormatNumber(d.gems) end
+    if d.power      then
+        St.power = d.power
+        powerLabel.Text = "POWER: "..Utils.FormatNumber(d.power)
+    end
     if d.equippedAura then
         St.equippedAura = d.equippedAura
         local rc = Config.RARITIES[d.equippedAura.rarity]
@@ -1054,7 +1110,7 @@ local function DoRoll()
         if St.rolling then
             St.rolling = false
             rollBtn.BackgroundColor3 = T.gold
-            rollBtn.Text = "🎲  ROLL AURA  [ SPACE ]"
+            rollBtn.Text = "🎲  ROLL AURA  [ R ]"
         end
     end)
 end
@@ -1080,7 +1136,7 @@ end)
 
 UserInputService.InputBegan:Connect(function(inp, gp)
     if gp then return end
-    if inp.KeyCode == Enum.KeyCode.Space then DoRoll() end
+    if inp.KeyCode == Enum.KeyCode.R then DoRoll() end
 end)
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -1089,7 +1145,7 @@ end)
 RollEvent.OnClientEvent:Connect(function(result, aura)
     St.rolling = false
     rollBtn.BackgroundColor3 = T.gold
-    rollBtn.Text = "🎲  ROLL AURA  [ SPACE ]"
+    rollBtn.Text = "🎲  ROLL AURA  [ R ]"
 
     if result == "SUCCESS" and aura then
         RevealResult(aura)
