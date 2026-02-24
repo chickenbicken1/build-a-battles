@@ -1,35 +1,30 @@
--- GameManager - Main coordinator
+-- GameManager - Main coordinator (loads services in the correct order)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 
--- Create Remotes folder
-local Remotes = Instance.new("Folder")
-Remotes.Name = "Remotes"
-Remotes.Parent = ReplicatedStorage
-
--- Load all systems in order
+-- IMPORTANT: RollService MUST be required first — it creates the Remotes folder
+-- and all RemoteEvents that other services and clients depend on.
 local RollService = require(script.Parent.RollService)
 local AuraService = require(script.Parent.AuraService)
-local EggShop = require(script.Parent.EggShop)
+local EggShop     = require(script.Parent.EggShop)
 
 local GameManager = {}
 
 function GameManager:Init()
-    print("🎮 Initializing Brainrot RNG...")
-    
-    -- Initialize RollService first (handles player data)
-    -- RollService auto-initializes on load
-    
-    -- Set up cross-service references
+    print("🎮 Initializing Aura Roller...")
+
+    -- Wire AuraService to RollService so it can read player data for respawn
+    AuraService:Init(RollService)
+
+    -- Wire EggShop to RollService for gem/pet operations
     EggShop:SetRollService(RollService)
-    EggShop:SetPlayerData(RollService.playerData)
-    
+
     print("✅ Game Manager Initialized")
     print("📝 Controls:")
-    print("   SPACE - Roll for aura")
-    print("   B - Toggle Build Mode (if available)")
-    print("   I - Open Inventory")
-    print("   Click eggs at spawn to open them!")
+    print("   SPACE or Click — Roll for aura")
+    print("   I             — Open Inventory")
+    print("   P             — Open Pet Manager")
+    print("   Click Eggs    — Open Egg at spawn")
 end
 
 GameManager:Init()

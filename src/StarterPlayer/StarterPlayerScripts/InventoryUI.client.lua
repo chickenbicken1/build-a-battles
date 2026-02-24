@@ -1,24 +1,75 @@
--- InventoryUI - Shows all collected auras
-local Players = game:GetService("Players")
+-- InventoryUI - Aura collection viewer with stacking, filter, and equip
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+local player            = Players.LocalPlayer
+local playerGui         = player:WaitForChild("PlayerGui")
 
-local Config = require(ReplicatedStorage.Shared.Config)
-local Utils = require(ReplicatedStorage.Shared.Utils)
-local C = Config.COLORS
+local Config  = require(ReplicatedStorage.Shared.Config)
+local Utils   = require(ReplicatedStorage.Shared.Utils)
+local C       = Config.COLORS
 
-local InventoryUI = {}
-local uiElements = {}
-local inventoryData = {}
-local isOpen = false
+-- Remotes — wait for RollService to create them first
+local Remotes       = ReplicatedStorage:WaitForChild("Remotes")
+local InventoryEvent = Remotes:WaitForChild("InventoryEvent")
 
-local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-local InventoryEvent = Instance.new("RemoteEvent")
-InventoryEvent.Name = "InventoryEvent"
-InventoryEvent.Parent = Remotes
+local InventoryUI  = {}
+local uiElements   = {}
+local inventoryData = {}   -- raw list from server
+local isOpen        = false
+local selectedAura  = nil
+local currentFilter = "All"
 
+-- ─────────────────────────────────────────────
+-- Rarity display order (highest first)
+-- ─────────────────────────────────────────────
+local RARITY_ORDER = {
+    Secret=1, Godlike=2, Mythic=3, Legendary=4, Epic=5, Rare=6, Uncommon=7, Common=8
+}
+
+local function GetRarityOrder(rarity)
+    return RARITY_ORDER[rarity] or 9
+end
+
+-- ─────────────────────────────────────────────
+-- Build stacked inventory (group duplicate aura IDs)
+-- ─────────────────────────────────────────────
+local function StackInventory(rawInventory)
+    local counts = {}
+    local order  = {}
+    for _, item in ipairs(rawInventory) do
+        local id = item.auraId
+        if not counts[id] then
+            counts[id] = 0
+            table.insert(order, id)
+        end
+        counts[id] = counts[id] + 1
+    end
+    -- Return unique items with count
+    local stacked = {}
+    for _, id in ipairs(order) do
+        -- Find aura config
+        for _, aura in ipairs(Config.AURAS) do
+            if aura.id == id then
+                table.insert(stacked, { aura = aura, count = counts[id] })
+                break
+            end
+        end
+    end
+    -- Sort by rarity then name
+    table.sort(stacked, function(a, b)
+        local oa = GetRarityOrder(a.aura.rarity)
+        local ob = GetRarityOrder(b.aura.rarity)
+        if oa ~= ob then return oa < ob end
+        return a.aura.name < b.aura.name
+    end)
+    return stacked
+end
+
+-- ─────────────────────────────────────────────
+-- Build UI
+-- ─────────────────────────────────────────────
 function InventoryUI:Init()
     self:CreateUI()
     self:ConnectEvents()
@@ -27,351 +78,382 @@ end
 
 function InventoryUI:CreateUI()
     local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "InventoryUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = playerGui
-    uiElements.screenGui = screenGui
-    
-    -- Main Frame
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 600, 0, 400)
-    mainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-    mainFrame.BackgroundColor3 = C.dark
-    mainFrame.BackgroundTransparency = 0.1
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Visible = false
-    mainFrame.Parent = screenGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = mainFrame
-    
-    uiElements.mainFrame = mainFrame
-    
-    -- Header
+    screenGui.Name          = "InventoryUI"
+    screenGui.ResetOnSpawn  = false
+    screenGui.DisplayOrder  = 10
+    screenGui.Parent        = playerGui
+    uiElements.screenGui    = screenGui
+
+    -- ── Main Frame ──
+    local main = Instance.new("Frame")
+    main.Name                  = "MainFrame"
+    main.Size                  = UDim2.new(0, 620, 0, 420)
+    main.Position              = UDim2.new(0.5, -310, 0.5, -210)
+    main.BackgroundColor3      = C.dark
+    main.BackgroundTransparency = 0.08
+    main.BorderSizePixel       = 0
+    main.Visible               = false
+    main.Parent                = screenGui
+    uiElements.mainFrame       = main
+
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color     = Color3.fromRGB(60, 65, 80)
+    stroke.Thickness = 1.5
+    stroke.Parent    = main
+
+    -- ── Header ──
     local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 50)
+    header.Size             = UDim2.new(1, 0, 0, 50)
     header.BackgroundColor3 = C.darker
-    header.BorderSizePixel = 0
-    header.Parent = mainFrame
-    
-    local headerCorner = Instance.new("UICorner")
-    headerCorner.CornerRadius = UDim.new(0, 12)
-    headerCorner.Parent = header
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -60, 1, 0)
-    title.Position = UDim2.new(0, 20, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "🎒 AURA INVENTORY"
-    title.TextColor3 = C.primary
-    title.TextSize = 24
-    title.Font = Enum.Font.GothamBlack
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = header
-    
-    local countLabel = Instance.new("TextLabel")
-    countLabel.Name = "CountLabel"
-    countLabel.Size = UDim2.new(0, 100, 1, 0)
-    countLabel.Position = UDim2.new(1, -120, 0, 0)
-    countLabel.BackgroundTransparency = 1
-    countLabel.Text = "0/99"
-    countLabel.TextColor3 = C.gray
-    countLabel.TextSize = 16
-    countLabel.Font = Enum.Font.GothamBold
-    countLabel.Parent = header
-    
-    uiElements.countLabel = countLabel
-    
-    -- Close Button
+    header.BorderSizePixel  = 0
+    header.Parent           = main
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size               = UDim2.new(1, -120, 1, 0)
+    titleLbl.Position           = UDim2.new(0, 16, 0, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text               = "🎒  AURA INVENTORY"
+    titleLbl.TextColor3         = C.primary
+    titleLbl.TextSize           = 20
+    titleLbl.Font               = Enum.Font.GothamBlack
+    titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+    titleLbl.Parent             = header
+
+    local countLbl = Instance.new("TextLabel")
+    countLbl.Name               = "CountLabel"
+    countLbl.Size               = UDim2.new(0, 80, 1, 0)
+    countLbl.Position           = UDim2.new(1, -130, 0, 0)
+    countLbl.BackgroundTransparency = 1
+    countLbl.Text               = "0 auras"
+    countLbl.TextColor3         = C.gray
+    countLbl.TextSize           = 13
+    countLbl.Font               = Enum.Font.GothamBold
+    countLbl.Parent             = header
+    uiElements.countLabel       = countLbl
+
+    -- Close button
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 40, 0, 40)
-    closeBtn.Position = UDim2.new(1, -50, 0, 5)
-    closeBtn.BackgroundColor3 = C.danger
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = C.light
-    closeBtn.TextSize = 20
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.Parent = header
-    
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0, 8)
-    closeCorner.Parent = closeBtn
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        self:Toggle()
-    end)
-    
-    -- Rarity Filter
-    local filterFrame = Instance.new("Frame")
-    filterFrame.Size = UDim2.new(1, -20, 0, 35)
-    filterFrame.Position = UDim2.new(0, 10, 0, 55)
-    filterFrame.BackgroundTransparency = 1
-    filterFrame.Parent = mainFrame
-    
+    closeBtn.Size               = UDim2.new(0, 36, 0, 36)
+    closeBtn.Position           = UDim2.new(1, -46, 0, 7)
+    closeBtn.BackgroundColor3   = C.danger
+    closeBtn.Text               = "✕"
+    closeBtn.TextColor3         = C.light
+    closeBtn.TextSize           = 18
+    closeBtn.Font               = Enum.Font.GothamBlack
+    closeBtn.Parent             = header
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+    closeBtn.MouseButton1Click:Connect(function() self:Toggle() end)
+
+    -- ── Rarity Filter Row ──
+    local filterRow = Instance.new("Frame")
+    filterRow.Size               = UDim2.new(1, -20, 0, 30)
+    filterRow.Position           = UDim2.new(0, 10, 0, 55)
+    filterRow.BackgroundTransparency = 1
+    filterRow.Parent             = main
+    uiElements.filterRow         = filterRow
+
     local filterLayout = Instance.new("UIListLayout")
-    filterLayout.FillDirection = Enum.FillDirection.Horizontal
-    filterLayout.Padding = UDim.new(0, 8)
-    filterLayout.Parent = filterFrame
-    
-    local rarities = {"All", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Godlike", "Secret"}
-    for _, rarity in ipairs(rarities) do
+    filterLayout.FillDirection   = Enum.FillDirection.Horizontal
+    filterLayout.Padding         = UDim.new(0, 6)
+    filterLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    filterLayout.Parent          = filterRow
+
+    local rarities = {"All","Common","Uncommon","Rare","Epic","Legendary","Mythic","Godlike","Secret"}
+    for _, r in ipairs(rarities) do
+        local rc = Config.RARITIES[r]
         local btn = Instance.new("TextButton")
-        btn.Name = rarity .. "Filter"
-        btn.Size = UDim2.new(0, 60, 0, 30)
-        btn.BackgroundColor3 = rarity == "All" and C.primary or C.darker
-        btn.Text = rarity
-        btn.TextColor3 = rarity == "All" and C.dark or C.light
-        btn.TextSize = 10
-        btn.Font = Enum.Font.GothamBold
-        btn.Parent = filterFrame
-        
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 6)
-        btnCorner.Parent = btn
-        
+        btn.Name               = r .. "Filter"
+        btn.Size               = UDim2.new(0, 56, 0, 26)
+        btn.BackgroundColor3   = r == "All" and C.primary or C.darker
+        btn.Text               = r == "All" and "All" or r:sub(1, 3)
+        btn.TextColor3         = r == "All" and C.dark or (rc and rc.color or C.light)
+        btn.TextSize           = 10
+        btn.Font               = Enum.Font.GothamBold
+        btn.Parent             = filterRow
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
         btn.MouseButton1Click:Connect(function()
-            self:FilterByRarity(rarity)
-            -- Update button colors
-            for _, child in ipairs(filterFrame:GetChildren()) do
+            currentFilter = r
+            self:RefreshGrid()
+            -- Update filter button states
+            for _, child in ipairs(filterRow:GetChildren()) do
                 if child:IsA("TextButton") then
                     child.BackgroundColor3 = C.darker
-                    child.TextColor3 = C.light
+                    local childRc = Config.RARITIES[child.Name:gsub("Filter","")]
+                    child.TextColor3 = childRc and childRc.color or C.light
                 end
             end
-            btn.BackgroundColor3 = C.primary
+            btn.BackgroundColor3 = rc and rc.color or C.primary
             btn.TextColor3 = C.dark
         end)
     end
-    
-    -- Scrolling Grid
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Name = "InventoryGrid"
-    scrollFrame.Size = UDim2.new(1, -20, 1, -100)
-    scrollFrame.Position = UDim2.new(0, 10, 0, 95)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 6
-    scrollFrame.ScrollBarImageColor3 = C.primary
-    scrollFrame.Parent = mainFrame
-    
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0, 100, 0, 120)
-    gridLayout.CellPadding = UDim.new(0, 10)
-    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.Parent = scrollFrame
-    
-    uiElements.scrollFrame = scrollFrame
-    uiElements.gridLayout = gridLayout
-    
-    -- Equip Button (bottom)
+
+    -- ── Scrolling Grid ──
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name                  = "InventoryGrid"
+    scroll.Size                  = UDim2.new(1, -20, 1, -100)
+    scroll.Position              = UDim2.new(0, 10, 0, 91)
+    scroll.BackgroundTransparency = 1
+    scroll.ScrollBarThickness    = 5
+    scroll.ScrollBarImageColor3  = C.primary
+    scroll.CanvasSize            = UDim2.new(0, 0, 0, 0)
+    scroll.Parent                = main
+    uiElements.scroll            = scroll
+
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize                = UDim2.new(0, 108, 0, 128)
+    grid.CellPadding             = UDim2.new(0, 10, 0, 10)
+    grid.SortOrder               = Enum.SortOrder.LayoutOrder
+    grid.HorizontalAlignment     = Enum.HorizontalAlignment.Left
+    grid.Parent                  = scroll
+    uiElements.grid              = grid
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop    = UDim.new(0, 4)
+    pad.PaddingLeft   = UDim.new(0, 4)
+    pad.Parent        = scroll
+
+    -- ── Equip Button (bottom) ──
     local equipBtn = Instance.new("TextButton")
-    equipBtn.Name = "EquipButton"
-    equipBtn.Size = UDim2.new(0, 200, 0, 40)
-    equipBtn.Position = UDim2.new(0.5, -100, 1, -50)
-    equipBtn.BackgroundColor3 = C.success
-    equipBtn.Text = "EQUIP SELECTED"
-    equipBtn.TextColor3 = C.light
-    equipBtn.TextSize = 16
-    equipBtn.Font = Enum.Font.GothamBold
-    equipBtn.Visible = false
-    equipBtn.Parent = mainFrame
-    
-    local equipCorner = Instance.new("UICorner")
-    equipCorner.CornerRadius = UDim.new(0, 8)
-    equipCorner.Parent = equipBtn
-    
-    uiElements.equipBtn = equipBtn
-    
-    -- Hotkey (I for Inventory)
-    local UserInputService = game:GetService("UserInputService")
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
+    equipBtn.Name               = "EquipButton"
+    equipBtn.Size               = UDim2.new(0, 220, 0, 36)
+    equipBtn.Position           = UDim2.new(0.5, -110, 1, -48)
+    equipBtn.BackgroundColor3   = C.success
+    equipBtn.Text               = "✓  EQUIP SELECTED"
+    equipBtn.TextColor3         = C.light
+    equipBtn.TextSize           = 15
+    equipBtn.Font               = Enum.Font.GothamBold
+    equipBtn.Visible            = false
+    equipBtn.Parent             = main
+    equipBtn.AutoButtonColor    = false
+    Instance.new("UICorner", equipBtn).CornerRadius = UDim.new(0, 8)
+    uiElements.equipBtn         = equipBtn
+
+    equipBtn.MouseButton1Click:Connect(function()
+        if selectedAura then
+            InventoryEvent:FireServer("EQUIP_AURA", selectedAura.id)
+            self:Toggle()
+        end
+    end)
+
+    -- ── Keyboard toggle ──
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
         if input.KeyCode == Enum.KeyCode.I then
             self:Toggle()
         end
     end)
 end
 
-function InventoryUI:CreateAuraCard(aura, index)
+-- ─────────────────────────────────────────────
+-- Create aura card
+-- ─────────────────────────────────────────────
+function InventoryUI:CreateAuraCard(entry, order)
+    local aura = entry.aura
+    local count = entry.count
+    local rc = Config.RARITIES[aura.rarity]
+
     local card = Instance.new("Frame")
-    card.Name = aura.id .. "_" .. index
-    card.Size = UDim2.new(0, 100, 0, 120)
+    card.Name            = aura.id
+    card.Size            = UDim2.new(0, 108, 0, 128)
     card.BackgroundColor3 = C.darker
     card.BorderSizePixel = 0
-    card.LayoutOrder = self:GetRarityOrder(aura.rarity)
-    
-    local rarityConfig = Config.RARITIES[aura.rarity]
-    
-    -- Rarity border
+    card.LayoutOrder     = order
+
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+
+    -- Border
     local border = Instance.new("UIStroke")
-    border.Color = rarityConfig and rarityConfig.color or C.gray
-    border.Thickness = 2
-    border.Parent = card
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = card
-    
-    -- Aura color preview
-    local preview = Instance.new("Frame")
-    preview.Size = UDim2.new(0, 60, 0, 60)
-    preview.Position = UDim2.new(0.5, -30, 0, 10)
-    preview.BackgroundColor3 = aura.particleColor or C.gray
-    preview.BorderSizePixel = 0
-    preview.Parent = card
-    
-    local previewCorner = Instance.new("UICorner")
-    previewCorner.CornerRadius = UDim.new(1, 0)
-    previewCorner.Parent = preview
-    
-    -- Glow effect for rare auras
-    if aura.rarity == "Legendary" or aura.rarity == "Mythic" or aura.rarity == "Godlike" or aura.rarity == "Secret" then
+    border.Color     = rc and rc.color or C.gray
+    border.Thickness = 1.5
+    border.Parent    = card
+
+    -- Aura color orb preview
+    local orb = Instance.new("Frame")
+    orb.Size               = UDim2.new(0, 64, 0, 64)
+    orb.Position           = UDim2.new(0.5, -32, 0, 10)
+    orb.BackgroundColor3   = aura.particleColor or C.gray
+    orb.BorderSizePixel    = 0
+    orb.Parent             = card
+    Instance.new("UICorner", orb).CornerRadius = UDim.new(1, 0)
+
+    -- Glow outline for Legendary+
+    if GetRarityOrder(aura.rarity) <= 4 then
         local glow = Instance.new("UIStroke")
-        glow.Color = aura.particleColor
-        glow.Thickness = 3
-        glow.Transparency = 0.5
-        glow.Parent = preview
+        glow.Color       = aura.particleColor or rc.color
+        glow.Thickness   = 4
+        glow.Transparency = 0.4
+        glow.Parent      = orb
     end
-    
+
+    -- Rarity-based icon overlay
+    local icons = {
+        Legendary = "⭐", Mythic = "🌟", Godlike = "👑", Secret = "∞"
+    }
+    if icons[aura.rarity] then
+        local ico = Instance.new("TextLabel")
+        ico.Size               = UDim2.new(1, 0, 1, 0)
+        ico.BackgroundTransparency = 1
+        ico.Text               = icons[aura.rarity]
+        ico.TextSize           = 22
+        ico.Parent             = orb
+    end
+
     -- Name
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.new(1, -10, 0, 25)
-    nameLabel.Position = UDim2.new(0, 5, 0, 75)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = aura.name
-    nameLabel.TextColor3 = rarityConfig and rarityConfig.color or C.light
-    nameLabel.TextSize = 14
-    nameLabel.Font = Enum.Font.GothamBold
-    nameLabel.TextWrapped = true
-    nameLabel.Parent = card
-    
-    -- Rarity
-    local rarityLabel = Instance.new("TextLabel")
-    rarityLabel.Size = UDim2.new(1, -10, 0, 15)
-    rarityLabel.Position = UDim2.new(0, 5, 0, 100)
-    rarityLabel.BackgroundTransparency = 1
-    rarityLabel.Text = aura.rarity
-    rarityLabel.TextColor3 = rarityConfig and rarityConfig.color or C.gray
-    rarityLabel.TextSize = 10
-    rarityLabel.Font = Enum.Font.Gotham
-    rarityLabel.Parent = card
-    
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size               = UDim2.new(1, -8, 0, 28)
+    nameLbl.Position           = UDim2.new(0, 4, 0, 78)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text               = aura.name
+    nameLbl.TextColor3         = rc and rc.color or C.light
+    nameLbl.TextSize           = 12
+    nameLbl.Font               = Enum.Font.GothamBold
+    nameLbl.TextWrapped        = true
+    nameLbl.Parent             = card
+
+    -- Rarity tag
+    local rarityLbl = Instance.new("TextLabel")
+    rarityLbl.Name             = "RarityLabel"  -- used by filter
+    rarityLbl.Size             = UDim2.new(1, -8, 0, 14)
+    rarityLbl.Position         = UDim2.new(0, 4, 0, 107)
+    rarityLbl.BackgroundTransparency = 1
+    rarityLbl.Text             = aura.rarity
+    rarityLbl.TextColor3       = rc and rc.color or C.gray
+    rarityLbl.TextSize         = 10
+    rarityLbl.Font             = Enum.Font.Gotham
+    rarityLbl.Parent           = card
+
+    -- Count badge (show if > 1)
+    if count > 1 then
+        local badge = Instance.new("Frame")
+        badge.Size               = UDim2.new(0, 26, 0, 20)
+        badge.Position           = UDim2.new(1, -28, 0, 4)
+        badge.BackgroundColor3   = C.primary
+        badge.BorderSizePixel    = 0
+        badge.ZIndex             = 2
+        badge.Parent             = card
+        Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 6)
+
+        local countLbl = Instance.new("TextLabel")
+        countLbl.Size               = UDim2.new(1, 0, 1, 0)
+        countLbl.BackgroundTransparency = 1
+        countLbl.Text               = "x" .. count
+        countLbl.TextColor3         = C.dark
+        countLbl.TextSize           = 11
+        countLbl.Font               = Enum.Font.GothamBold
+        countLbl.ZIndex             = 3
+        countLbl.Parent             = badge
+    end
+
     -- Click to select
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, 0, 1, 0)
-    button.BackgroundTransparency = 1
-    button.Text = ""
-    button.Parent = card
-    
-    button.MouseButton1Click:Connect(function()
-        self:SelectAura(aura, card)
+    local btn = Instance.new("TextButton")
+    btn.Size               = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text               = ""
+    btn.ZIndex             = 4
+    btn.Parent             = card
+
+    btn.MouseButton1Click:Connect(function()
+        self:SelectCard(aura, card)
     end)
-    
+
     return card
 end
 
-function InventoryUI:GetRarityOrder(rarity)
-    local orders = {
-        Secret = 1,
-        Godlike = 2,
-        Mythic = 3,
-        Legendary = 4,
-        Epic = 5,
-        Rare = 6,
-        Uncommon = 7,
-        Common = 8
-    }
-    return orders[rarity] or 9
-end
+-- ─────────────────────────────────────────────
+-- Select a card
+-- ─────────────────────────────────────────────
+function InventoryUI:SelectCard(aura, card)
+    selectedAura = aura
 
-function InventoryUI:UpdateInventory(auras)
-    inventoryData = auras or {}
-    
-    -- Clear existing
-    for _, child in ipairs(uiElements.scrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    
-    -- Create cards
-    for i, auraData in ipairs(inventoryData) do
-        for _, aura in ipairs(Config.AURAS) do
-            if aura.id == auraData.auraId then
-                local card = self:CreateAuraCard(aura, i)
-                card.Parent = uiElements.scrollFrame
-                break
-            end
-        end
-    end
-    
-    -- Update count
-    uiElements.countLabel.Text = string.format("%d/99", #inventoryData)
-    
-    -- Update canvas size
-    local gridLayout = uiElements.gridLayout
-    local rows = math.ceil(#inventoryData / 5)
-    uiElements.scrollFrame.CanvasSize = UDim2.new(0, 0, 0, rows * 130)
-end
-
-function InventoryUI:SelectAura(aura, card)
     -- Deselect all
-    for _, child in ipairs(uiElements.scrollFrame:GetChildren()) do
+    for _, child in ipairs(uiElements.scroll:GetChildren()) do
         if child:IsA("Frame") then
-            local border = child:FindFirstChildOfClass("UIStroke")
-            if border then
-                border.Thickness = 2
-            end
+            local s = child:FindFirstChildOfClass("UIStroke")
+            if s then s.Thickness = 1.5 end
         end
     end
-    
-    -- Select this one
-    local border = card:FindFirstChildOfClass("UIStroke")
-    if border then
-        border.Thickness = 4
-    end
-    
-    uiElements.selectedAura = aura
+
+    -- Highlight selected
+    local s = card:FindFirstChildOfClass("UIStroke")
+    if s then s.Thickness = 4 end
+
     uiElements.equipBtn.Visible = true
 end
 
-function InventoryUI:FilterByRarity(rarity)
-    for _, child in ipairs(uiElements.scrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            local rarityLabel = child:FindFirstChild("Rarity")
-            if rarityLabel then
-                if rarity == "All" or rarityLabel.Text == rarity then
-                    child.Visible = true
-                else
-                    child.Visible = false
-                end
-            end
+-- ─────────────────────────────────────────────
+-- Refresh grid with filter applied
+-- ─────────────────────────────────────────────
+function InventoryUI:RefreshGrid()
+    -- Clear grid
+    for _, child in ipairs(uiElements.scroll:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+
+    selectedAura = nil
+    uiElements.equipBtn.Visible = false
+
+    local stacked = StackInventory(inventoryData)
+    local shown, order = 0, 0
+
+    for _, entry in ipairs(stacked) do
+        -- Filter check
+        if currentFilter == "All" or entry.aura.rarity == currentFilter then
+            order = order + 1
+            local card = self:CreateAuraCard(entry, order)
+            card.Parent = uiElements.scroll
+            shown = shown + 1
         end
     end
+
+    -- Update count label
+    local total = #StackInventory(inventoryData)
+    uiElements.countLabel.Text = string.format("%d aura%s", total, total ~= 1 and "s" or "")
+
+    -- Resize canvas
+    local cols = math.max(1, math.floor((620 - 20) / (108 + 10)))
+    local rows = math.ceil(shown / cols)
+    uiElements.scroll.CanvasSize = UDim2.new(0, 0, 0, rows * (128 + 10) + 10)
 end
 
+-- ─────────────────────────────────────────────
+-- Toggle open/close
+-- ─────────────────────────────────────────────
 function InventoryUI:Toggle()
     isOpen = not isOpen
-    uiElements.mainFrame.Visible = isOpen
-    
+    local frame = uiElements.mainFrame
+
     if isOpen then
-        -- Request inventory data
+        frame.Visible = true
+        frame.Size    = UDim2.new(0, 300, 0, 200)
+        TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+            Size = UDim2.new(0, 620, 0, 420)
+        }):Play()
+        -- Request data
         InventoryEvent:FireServer("GET_INVENTORY")
+    else
+        TweenService:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 300, 0, 200)
+        }):Play()
+        task.delay(0.2, function()
+            frame.Visible = false
+        end)
     end
 end
 
+-- ─────────────────────────────────────────────
+-- Events
+-- ─────────────────────────────────────────────
 function InventoryUI:ConnectEvents()
     InventoryEvent.OnClientEvent:Connect(function(action, data)
         if action == "INVENTORY_DATA" then
-            self:UpdateInventory(data)
-        end
-    end)
-    
-    uiElements.equipBtn.MouseButton1Click:Connect(function()
-        if uiElements.selectedAura then
-            InventoryEvent:FireServer("EQUIP_AURA", uiElements.selectedAura.id)
-            self:Toggle()
+            inventoryData = data or {}
+            self:RefreshGrid()
+        elseif action == "EQUIP_SUCCESS" then
+            -- Inventory closes on equip, already handled
         end
     end)
 end

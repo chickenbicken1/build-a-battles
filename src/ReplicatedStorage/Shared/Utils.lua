@@ -32,7 +32,7 @@ function Utils.WeightedRandom(items, luckMultiplier)
         end
     end
     
-    return items[#items].item -- Fallback to last
+    return weightedItems[#weightedItems].item -- Fallback to last
 end
 
 -- Simple random selection from weighted table
