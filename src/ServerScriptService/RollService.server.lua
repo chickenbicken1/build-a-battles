@@ -492,6 +492,8 @@ Players.PlayerRemoving:Connect(function(player)
     end
     playerData[player.UserId] = nil
     rollCooldowns[player.UserId] = nil
+    luckBoosts[player.UserId]   = nil
+    gemBoosts[player.UserId]    = nil
 end)
 
 -- Save all on server shutdown
@@ -501,5 +503,74 @@ game:BindToClose(function()
     end
 end)
 
+-- ── Shop System ──────────────────────────────────────────────────────────
+
+-- Active boosts (userId -> expiry tick())
+local luckBoosts = {}  -- 3x luck boost
+local gemBoosts  = {}  -- 2x gem boost
+
+-- Patch CalculateLuck to include active boosts
+local _origCalcLuck = RollService.CalculateLuck
+function RollService:CalculateLuck(player)
+    local luck = _origCalcLuck(self, player)
+    if luckBoosts[player.UserId] and tick() < luckBoosts[player.UserId] then
+        luck = luck * 3
+    end
+    local data = playerData[player.UserId]
+    if data then data.totalLuck = luck end
+    return luck
+end
+
+-- Patch gem earn in Roll to respect gem boost
+local _origRoll = RollService.Roll
+function RollService:Roll(player)
+    local result = _origRoll(self, player)
+    if result then
+        local data = playerData[player.UserId]
+        if data and gemBoosts[player.UserId] and tick() < gemBoosts[player.UserId] then
+            data.gems = data.gems + 1  -- adds 1 more (total 2 per roll)
+        end
+    end
+    return result
+end
+
+local ShopEvent = Instance.new("RemoteEvent")
+ShopEvent.Name = "ShopEvent"
+ShopEvent.Parent = Remotes
+
+local SHOP_ITEMS = {
+    lucky_boost = { cost = 50,  desc = "3x Luck for 60s",       duration = 60  },
+    gem_doubler = { cost = 75,  desc = "2x Gems for 5min",      duration = 300 },
+}
+
+ShopEvent.OnServerEvent:Connect(function(player, itemId)
+    local data = playerData[player.UserId]
+    if not data then return end
+
+    local item = SHOP_ITEMS[itemId]
+    if not item then
+        ShopEvent:FireClient(player, "FAILED", "Unknown item")
+        return
+    end
+
+    if data.gems < item.cost then
+        ShopEvent:FireClient(player, "FAILED", "Not enough gems")
+        return
+    end
+
+    data.gems = data.gems - item.cost
+
+    if itemId == "lucky_boost" then
+        luckBoosts[player.UserId] = tick() + item.duration
+    elseif itemId == "gem_doubler" then
+        gemBoosts[player.UserId] = tick() + item.duration
+    end
+
+    RollService:SyncData(player)
+    ShopEvent:FireClient(player, "SUCCESS", itemId, item.duration)
+    print(string.format("🛒 %s purchased %s", player.Name, itemId))
+end)
+
 print("✅ Roll Service Initialized")
 return RollService
+
