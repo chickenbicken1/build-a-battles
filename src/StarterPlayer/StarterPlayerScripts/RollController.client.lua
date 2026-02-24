@@ -194,7 +194,6 @@ function RollController:CreateUI()
     title.TextColor3         = C.primary
     title.TextSize           = 22
     title.Font               = Enum.Font.GothamBlack
-    title.LetterSpacing      = 4
     title.Parent             = panel
 
     -- ── Slot Machine Result Frame ──

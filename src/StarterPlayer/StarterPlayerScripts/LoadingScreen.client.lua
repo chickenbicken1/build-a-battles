@@ -28,7 +28,6 @@ title.Text               = "🎲  AURA  ROLLER"
 title.TextColor3         = Color3.fromRGB(255, 200, 50)
 title.TextSize           = 52
 title.Font               = Enum.Font.GothamBlack
-title.LetterSpacing      = 6
 title.Parent             = bg
 
 -- Subtitle

@@ -1,51 +1,66 @@
--- AuraService - Server: re-equips aura on respawn using RollService data
+-- AuraService - Server: re-equips aura on character respawn
+-- This is a standalone Script (not a ModuleScript) — it self-initializes.
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage.Shared.Config)
+-- Wait for RollService to create its Remotes and return itself
+-- RollService is a Script, NOT a ModuleScript — we can't require() it directly.
+-- Instead, we share player data via the Config module approach using a BindableEvent
+-- or simply by waiting for the Remotes event system.
 
--- Wait for RollService to create the Remotes folder and AuraEquipEvent
-local Remotes        = ReplicatedStorage:WaitForChild("Remotes")
-local AuraEquipEvent = Remotes:WaitForChild("AuraEquipEvent")
+-- The aura re-equip is handled by firing AuraEquipEvent to all clients.
+local Remotes         = ReplicatedStorage:WaitForChild("Remotes")
+local AuraEquipEvent  = Remotes:WaitForChild("AuraEquipEvent")
+local DataUpdateEvent = Remotes:WaitForChild("DataUpdateEvent")
 
--- We import RollService lazily (it is the parent's sibling)
--- RollService exposes .playerData table directly
-local RollService = nil
+-- We keep our own map of userId -> equippedAuraId, updated by listening
+-- to the server's own data sync events (we intercept them on server side).
+-- Actually, we just refire the stored aura from the RollService playerData.
+-- Since we can't import RollService (both are Scripts), we store it here.
+local equippedAuras = {}  -- userId -> auraId, mirrors RollService
 
-local AuraService  = {}
-
--- Re-equip the player's stored aura to all clients after respawn
-function AuraService:ReequipAura(player)
-    if not RollService then return end
-    local data = RollService:GetPlayerData(player)
-    if not data then return end
-    if not data.equippedAura then return end
-
-    -- Announce to all clients (AuraRenderer handles the actual VFX)
-    AuraEquipEvent:FireAllClients(player.UserId, data.equippedAura)
-end
-
--- Initialize per-player character tracking
-function AuraService:SetupPlayer(player)
-    player.CharacterAdded:Connect(function(_char)
-        task.wait(1.5) -- wait for HRP to be fully loaded
-        self:ReequipAura(player)
-    end)
-end
-
-function AuraService:Init(rollServiceRef)
-    RollService = rollServiceRef
-
-    -- Hook existing players (in case this runs after some joined)
-    for _, p in ipairs(Players:GetPlayers()) do
-        self:SetupPlayer(p)
+-- Listen for equip events from clients (these pass through to us too)
+AuraEquipEvent.OnServerEvent:Connect(function(player, auraId)
+    -- Store the equipped aura so we can re-apply on respawn
+    if auraId and type(auraId) == "string" then
+        equippedAuras[player.UserId] = auraId
+        -- Broadcast to all clients so everyone sees this player's aura
+        AuraEquipEvent:FireAllClients(player.UserId, auraId)
     end
+end)
 
-    Players.PlayerAdded:Connect(function(p)
-        self:SetupPlayer(p)
-    end)
+-- On character respawn, re-equip their last known aura
+local function OnCharacterAdded(player, _char)
+    task.wait(1.5) -- wait for HumanoidRootPart
 
-    print("✅ Aura Service Initialized")
+    local auraId = equippedAuras[player.UserId]
+    if auraId then
+        AuraEquipEvent:FireAllClients(player.UserId, auraId)
+    end
 end
 
-return AuraService
+-- Hook up character respawn for all players
+local function SetupPlayer(player)
+    player.CharacterAdded:Connect(function(char)
+        OnCharacterAdded(player, char)
+    end)
+
+    player.CharacterRemoving:Connect(function()
+        -- Don't clear equippedAuras here — we want to persist across respawn
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    SetupPlayer(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    equippedAuras[player.UserId] = nil
+end)
+
+-- Handle already-joined players (on game start in Studio)
+for _, player in ipairs(Players:GetPlayers()) do
+    SetupPlayer(player)
+end
+
+print("✅ Aura Service Initialized")
