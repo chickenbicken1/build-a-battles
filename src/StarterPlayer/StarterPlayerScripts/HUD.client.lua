@@ -19,7 +19,7 @@ local Remotes         = ReplicatedStorage:WaitForChild("Remotes")
 local RollEvent       = Remotes:WaitForChild("RollEvent")
 local DataUpdateEvent = Remotes:WaitForChild("DataUpdateEvent")
 local InventoryEvent  = Remotes:WaitForChild("InventoryEvent")
-local EquipPetEvent   = Remotes:WaitForChild("EquipPetEvent")
+local PetActionRequest = Remotes:WaitForChild("PetActionRequest")
 local ShopEvent       = Remotes:WaitForChild("ShopEvent")
 
 -- ── Theme ──────────────────────────────────────────────────────────────────
@@ -835,11 +835,8 @@ do
                 Text = isEq and "UNEQUIP" or "EQUIP",
                 TextColor3=T.white, ZIndex=22, Parent=card,
             }, function()
-                if isEq then
-                    EquipPetEvent:FireServer(pet.id, "UNEQUIP")
-                else
-                    EquipPetEvent:FireServer(pet.id, "EQUIP")
-                end
+                local res, err = PetActionRequest:InvokeServer("Equip", pet.id)
+                if res == "Error" then Toast("❌ "..err, T.red) end
             end)
             RC(eb,6)
             Instance.new("UITextSizeConstraint",eb).MaxTextSize=11

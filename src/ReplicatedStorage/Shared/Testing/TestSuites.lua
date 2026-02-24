@@ -7,9 +7,12 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 
 local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
+local PlayerGui = nil
+if player then
+    PlayerGui = player:WaitForChild("PlayerGui")
+end
 -- HUD.client.lua creates HUDGUI
-local gui = PlayerGui:WaitForChild("HUDGUI", 15)
+local gui = PlayerGui and PlayerGui:WaitForChild("HUDGUI", 15) or nil
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local EggEvent = Remotes:WaitForChild("EggEvent")
 local Utils = require(Shared:WaitForChild("Utils"))
