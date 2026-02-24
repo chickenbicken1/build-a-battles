@@ -1,56 +1,33 @@
 -- RollService - Server-side RNG, player data, and DataStore persistence
-print("🚀 [RollService] ACTIVATED - Syncing version: "..tick())
+-- [PURE MODULE VERSION]
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 
-local Config = require(ReplicatedStorage.Shared.Config)
-local Utils = require(ReplicatedStorage.Shared.Utils)
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 
 -- DataStore
 local PlayerDataStore = DataStoreService:GetDataStore("AuraRollerV1")
 
--- Player data storage (in-memory)
-local playerData = {}
-
--- ── Boost Tables MUST be initialized before any functions use them ──────
-local luckBoosts = {}  -- 3x luck boost
-local gemBoosts  = {}  -- 2x gem boost
+local RollService = {}
+RollService.playerData = {}
+local luckBoosts = {}
+local gemBoosts  = {}
 local rollCooldowns = {}
 local ROLL_COOLDOWN = 1.0
 
--- Setup Remotes
-local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-if not Remotes then
-    Remotes = Instance.new("Folder")
-    Remotes.Name = "Remotes"
-    Remotes.Parent = ReplicatedStorage
-end
+-- Remotes Cache
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local RollEvent       = Remotes:WaitForChild("RollEvent")
+local EquipAuraEvent  = Remotes:WaitForChild("EquipAuraEvent")
+local EquipPetEvent   = Remotes:WaitForChild("EquipPetEvent")
+local DataUpdateEvent = Remotes:WaitForChild("DataUpdateEvent")
+local InventoryEvent  = Remotes:WaitForChild("InventoryEvent")
+local AuraEquipEvent  = Remotes:WaitForChild("AuraEquipEvent")
+local EggEvent        = Remotes:WaitForChild("EggEvent")
+local ShopEvent       = Remotes:WaitForChild("ShopEvent")
 
-local function GetRemote(name, class)
-    local r = Remotes:FindFirstChild(name)
-    if not r then
-        r = Instance.new(class or "RemoteEvent")
-        r.Name = name
-        r.Parent = Remotes
-    end
-    return r
-end
-
-local RollEvent       = GetRemote("RollEvent")
-local EquipAuraEvent  = GetRemote("EquipAuraEvent")
-local EquipPetEvent   = GetRemote("EquipPetEvent")
-local DataUpdateEvent = GetRemote("DataUpdateEvent")
-local InventoryEvent  = GetRemote("InventoryEvent")
-local AuraEquipEvent  = GetRemote("AuraEquipEvent")
-local EggEvent        = GetRemote("EggEvent")
-local ShopEvent       = GetRemote("ShopEvent")
-
--- RollService
-local RollService = {}
-RollService.playerData = playerData
-
--- Default player data template
 local function GetDefaultData()
     return {
         inventory = {},
@@ -64,21 +41,12 @@ local function GetDefaultData()
     }
 end
 
--- Load data from DataStore with retry
 local function LoadData(userId)
     local data = nil
-    local success, err
-    for attempt = 1, 3 do
-        success, err = pcall(function()
-            data = PlayerDataStore:GetAsync(tostring(userId))
-        end)
-        if success then break end
-        task.wait(1)
-    end
+    pcall(function() data = PlayerDataStore:GetAsync(tostring(userId)) end)
     return data
 end
 
--- Save data to DataStore with retry
 local function SaveData(userId, data)
     local saveData = {
         inventory = data.inventory,
@@ -92,9 +60,8 @@ local function SaveData(userId, data)
     pcall(function() PlayerDataStore:SetAsync(tostring(userId), saveData) end)
 end
 
--- Synchronize luck calculation
 function RollService:CalculateLuck(player)
-    local data = playerData[player.UserId]
+    local data = self.playerData[player.UserId]
     if not data then return 1 end
 
     local petLuck = 1
@@ -116,9 +83,8 @@ function RollService:CalculateLuck(player)
     return finalLuck
 end
 
--- Synchronize power calculation
 function RollService:CalculatePower(player)
-    local data = playerData[player.UserId]
+    local data = self.playerData[player.UserId]
     if not data then return 0 end
 
     local auraPower = 0
@@ -137,9 +103,8 @@ function RollService:CalculatePower(player)
     return power
 end
 
--- Sync data to client
 function RollService:SyncData(player)
-    local data = playerData[player.UserId]
+    local data = self.playerData[player.UserId]
     if not data then return end
 
     self:CalculateLuck(player)
@@ -171,9 +136,8 @@ function RollService:SyncData(player)
     })
 end
 
--- Roll logic (Delayed result giving)
 function RollService:Roll(player)
-    local data = playerData[player.UserId]
+    local data = self.playerData[player.UserId]
     if not data then return nil end
 
     local now = tick()
@@ -191,93 +155,99 @@ function RollService:Roll(player)
     local result = Utils.WeightedRandom(weightedAuras, luck)
     local rolledAura = result.aura or Config.AURAS[1]
 
-    -- Reward delay to match client anim
     task.spawn(function()
         task.wait(1.8)
         if not player or not player.Parent then return end
         
         table.insert(data.inventory, { auraId = rolledAura.id, rollDate = os.time() })
         data.rollCount = data.rollCount + 1
-        
-        local gain = 1
-        if gemBoosts[player.UserId] and tick() < gemBoosts[player.UserId] then gain = 2 end
-        data.gems = data.gems + gain
+        data.gems = data.gems + (gemBoosts[player.UserId] and tick() < gemBoosts[player.UserId] and 2 or 1)
 
         if rolledAura.rarity == "Secret" or rolledAura.rarity == "Godlike" then
-            self:BroadcastRoll(player, rolledAura)
+            for _, p in ipairs(Players:GetPlayers()) do
+                DataUpdateEvent:FireClient(p, "RARE_ROLL", {
+                    playerName = player.Name,
+                    auraName = rolledAura.name,
+                    rarity = rolledAura.rarity,
+                    color = Config.RARITIES[rolledAura.rarity].color or Color3.new(1,1,1)
+                })
+            end
         end
-
         self:SyncData(player)
     end)
 
     return rolledAura
 end
 
-function RollService:BroadcastRoll(player, aura)
-    local rc = Config.RARITIES[aura.rarity]
-    for _, p in ipairs(Players:GetPlayers()) do
-        DataUpdateEvent:FireClient(p, "RARE_ROLL", {
-            playerName = player.Name,
-            auraName = aura.name,
-            rarity = aura.rarity,
-            color = rc and rc.color or Color3.new(1,1,1)
-        })
-    end
-end
-
--- Initialize player
 function RollService:InitPlayer(player)
     local saved = LoadData(player.UserId)
-    if saved then
-        playerData[player.UserId] = saved
-        local data = playerData[player.UserId]
-        if not data.equippedPets then data.equippedPets = {} end
-        data.gems = 9999 -- Force gems for testing
-    else
-        playerData[player.UserId] = GetDefaultData()
-    end
+    self.playerData[player.UserId] = saved or GetDefaultData()
+    self.playerData[player.UserId].gems = 9999 -- TEST FORCE
     self:SyncData(player)
-    if playerData[player.UserId].equippedAura then
-        AuraEquipEvent:FireAllClients(player.UserId, playerData[player.UserId].equippedAura)
+    if self.playerData[player.UserId].equippedAura then
+        AuraEquipEvent:FireAllClients(player.UserId, self.playerData[player.UserId].equippedAura)
     end
 end
 
--- Remote Handlers
-RollEvent.OnServerEvent:Connect(function(player)
-    local aura = RollService:Roll(player)
-    if aura then RollEvent:FireClient(player, "SUCCESS", aura) end
-end)
+function RollService:Init()
+    print("🚀 [RollService] Pure Module Initialization")
+    
+    Players.PlayerAdded:Connect(function(p) self:InitPlayer(p) end)
+    Players.PlayerRemoving:Connect(function(p)
+        if self.playerData[p.UserId] then SaveData(p.UserId, self.playerData[p.UserId]) end
+        self.playerData[p.UserId] = nil
+    end)
+    
+    for _, p in ipairs(Players:GetPlayers()) do self:InitPlayer(p) end
+    
+    RollEvent.OnServerEvent:Connect(function(p)
+        local aura = self:Roll(p)
+        if aura then RollEvent:FireClient(p, "SUCCESS", aura) end
+    end)
+    
+    InventoryEvent.OnServerEvent:Connect(function(p, action, data)
+        local pd = self.playerData[p.UserId]
+        if not pd then return end
+        if action == "GET_INVENTORY" then
+            InventoryEvent:FireClient(p, "INVENTORY_DATA", pd.inventory)
+        elseif action == "EQUIP_AURA" then
+            pd.equippedAura = data
+            self:SyncData(p)
+            AuraEquipEvent:FireAllClients(p.UserId, data)
+        end
+    end)
+    
+    local SHOP_ITEMS = { lucky_boost = { cost = 50, duration = 60 }, gem_doubler = { cost = 75, duration = 300 } }
+    ShopEvent.OnServerEvent:Connect(function(p, itemId)
+        local data = self.playerData[p.UserId]
+        local item = SHOP_ITEMS[itemId]
+        if not data or not item or data.gems < item.cost then return end
+        data.gems = data.gems - item.cost
+        if itemId == "lucky_boost" then luckBoosts[p.UserId] = tick() + item.duration
+        elseif itemId == "gem_doubler" then gemBoosts[p.UserId] = tick() + item.duration end
+        self:SyncData(p)
+        ShopEvent:FireClient(p, "SUCCESS", itemId, item.duration)
+    end)
+    
+    EquipPetEvent.OnServerEvent:Connect(function(p, petId)
+        local data = self.playerData[p.UserId]
+        if not data then return end
+        if not data.equippedPets then data.equippedPets = {} end
+        
+        -- Toggle logic
+        local found = table.find(data.equippedPets, petId)
+        if found then
+            table.remove(data.equippedPets, found)
+        else
+            if #data.equippedPets < 3 then
+                table.insert(data.equippedPets, petId)
+            end
+        end
+        self:SyncData(p)
+    end)
 
-InventoryEvent.OnServerEvent:Connect(function(player, action, data)
-    local pd = playerData[player.UserId]
-    if not pd then return end
-    if action == "GET_INVENTORY" then
-        InventoryEvent:FireClient(player, "INVENTORY_DATA", pd.inventory)
-    elseif action == "EQUIP_AURA" then
-        pd.equippedAura = data
-        RollService:SyncData(player)
-        AuraEquipEvent:FireAllClients(player.UserId, data)
-    end
-end)
+    game:BindToClose(function() for id, data in pairs(self.playerData) do SaveData(id, data) end end)
+    print("✅ RollService Ready")
+end
 
-local SHOP_ITEMS = { lucky_boost = { cost = 50, duration = 60 }, gem_doubler = { cost = 75, duration = 300 } }
-ShopEvent.OnServerEvent:Connect(function(player, itemId)
-    local data = playerData[player.UserId]
-    local item = SHOP_ITEMS[itemId]
-    if not data or not item or data.gems < item.cost then return end
-    data.gems = data.gems - item.cost
-    if itemId == "lucky_boost" then luckBoosts[player.UserId] = tick() + item.duration
-    elseif itemId == "gem_doubler" then gemBoosts[player.UserId] = tick() + item.duration end
-    RollService:SyncData(player)
-    ShopEvent:FireClient(player, "SUCCESS", itemId, item.duration)
-end)
-
-Players.PlayerAdded:Connect(function(player) RollService:InitPlayer(player) end)
-Players.PlayerRemoving:Connect(function(player)
-    if playerData[player.UserId] then SaveData(player.UserId, playerData[player.UserId]) end
-    playerData[player.UserId] = nil
-end)
-game:BindToClose(function() for id, data in pairs(playerData) do SaveData(id, data) end end)
-
-print("✅ RollService Finalized (Clean)")
 return RollService

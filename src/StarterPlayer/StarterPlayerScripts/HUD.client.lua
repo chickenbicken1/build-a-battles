@@ -259,15 +259,15 @@ RC(sidePanel, 14) ; STK(sidePanel)
 -- ── Top-Left Player Stats (Power & Luck) ──────────────────────────────────
 local statsPanel = MkFrame({
     Name = "TopStats",
-    Size = UDim2.new(0, 180, 0, 110), -- Increased height to 110
-    Position = UDim2.new(0, 10, 0, 10),
+    Size = UDim2.new(0, 200, 0, 115), -- Slightly wider and taller
+    Position = UDim2.new(0, 15, 0, 15),
     BackgroundColor3 = T.panel,
     BackgroundTransparency = 0.1,
     ZIndex = 25,
     Parent = gui,
 })
 RC(statsPanel, 12) ; STK(statsPanel)
-Pad(statsPanel, 8, 12, 8, 12)
+Pad(statsPanel, 12, 14, 12, 14) -- Better padding
 
 local statsPanelLayout = Instance.new("UIListLayout")
 statsPanelLayout.Padding = UDim.new(0, 4)
@@ -1041,14 +1041,14 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 local function UpdateStats(d)
     if d.totalLuck then 
-        St.luck = d.totalLuck  
+        St.luck = d.totalLuck
         lblLuck.Text = "🍀 "..Utils.FormatLuck(d.totalLuck)
     end
     if d.rollCount then St.rolls = d.rollCount ; lblRolls.Text = "🎲 "..Utils.FormatNumber(d.rollCount) end
     if d.gems ~= nil then 
         St.gems = d.gems
         if lblGems then lblGems.Text = "💎 "..Utils.FormatNumber(d.gems) end
-        if gemsLabelTop then gemsLabelTop.Text = "GEMS: "..Utils.FormatNumber(d.gems) end
+        if gemsLabelTop then gemsLabelTop.Text = "💎 GEMS: "..Utils.FormatNumber(d.gems) end
     end
     
     if d.equippedAura then

@@ -1,18 +1,13 @@
 -- EggShop - Server-side egg opening system
+-- [PURE MODULE VERSION]
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local Config = require(ReplicatedStorage.Shared.Config)
-local Utils = require(ReplicatedStorage.Shared.Utils)
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Utils = require(Shared:WaitForChild("Utils"))
 
 local EggShop = {}
-
--- Setup Remotes
-local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-local EggEvent = Instance.new("RemoteEvent")
-EggEvent.Name = "EggEvent"
-EggEvent.Parent = Remotes
-
--- Egg types with costs and drop rates
 local EGG_TYPES = {
     Basic = {
         name = "Basic Egg",
@@ -48,239 +43,109 @@ local EGG_TYPES = {
     }
 }
 
--- Player data reference (set by RollService)
-local playerData = {}
 local rollService = nil
+local EggEvent = nil
 
 function EggShop:SetRollService(service)
     rollService = service
 end
 
-function EggShop:SetPlayerData(data)
-    playerData = data
-end
-
--- Create egg shop model in workspace
 function EggShop:CreateShopModel()
-    local shopModel = Instance.new("Model")
+    local shopModel = workspace:FindFirstChild("EggShop") or Instance.new("Model")
     shopModel.Name = "EggShop"
     shopModel.Parent = workspace
     
-    -- Base platform
-    local base = Instance.new("Part")
+    local base = shopModel:FindFirstChild("ShopBase") or Instance.new("Part")
     base.Name = "ShopBase"
-    base.Size = Vector3.new(20, 1, 20)
-    base.Position = Vector3.new(50, 0.5, 0)
+    base.Size = Vector3.new(24, 1, 10)
+    base.Position = Vector3.new(30, 0.5, 30) -- Moved for visibility
     base.Anchored = true
-    base.Color = Color3.fromRGB(60, 60, 70)
-    base.Material = Enum.Material.SmoothPlastic
+    base.Color = Color3.fromRGB(45, 45, 55)
     base.Parent = shopModel
     
-    -- Create egg displays
     local eggPositions = {
-        {type = "Basic", pos = Vector3.new(42, 3, 0), color = EGG_TYPES.Basic.color},
-        {type = "Rare", pos = Vector3.new(50, 3, 0), color = EGG_TYPES.Rare.color},
-        {type = "Legendary", pos = Vector3.new(58, 3, 0), color = EGG_TYPES.Legendary.color}
+        {type = "Basic", pos = Vector3.new(22, 3, 30)},
+        {type = "Rare", pos = Vector3.new(30, 3, 30)},
+        {type = "Legendary", pos = Vector3.new(38, 3, 30)}
     }
     
-    for _, eggData in ipairs(eggPositions) do
-        self:CreateEggDisplay(eggData.type, eggData.pos, eggData.color, shopModel)
+    for _, eData in ipairs(eggPositions) do
+        local config = EGG_TYPES[eData.type]
+        local pedestal = shopModel:FindFirstChild(eData.type.."Ped") or Instance.new("Part")
+        pedestal.Name = eData.type.."Ped"
+        pedestal.Size = Vector3.new(4, 2, 4)
+        pedestal.Position = eData.pos - Vector3.new(0, 2, 0)
+        pedestal.Anchored = true ; pedestal.Parent = shopModel
+        
+        local egg = shopModel:FindFirstChild(eData.type.."Egg") or Instance.new("Part")
+        egg.Name = eData.type.."Egg"
+        egg.Size = Vector3.new(3.5, 4.5, 3.5)
+        egg.Shape = Enum.PartType.Ball
+        egg.Position = eData.pos
+        egg.Anchored = true
+        egg.Color = config.color
+        egg.Material = Enum.Material.Neon
+        egg.Parent = shopModel
+        
+        local prompt = egg:FindFirstChild("Prompt") or Instance.new("ProximityPrompt")
+        prompt.Name = "Prompt"
+        prompt.ObjectText = config.name
+        prompt.ActionText = "Open ("..config.cost.." 💎)"
+        prompt.KeyboardKeyCode = Enum.KeyCode.E
+        prompt.HoldDuration = 0.5
+        prompt.Parent = egg
+        
+        prompt.Triggered:Connect(function(player) self:OpenEgg(player, eData.type) end)
     end
-    
-    -- Sign
-    local sign = Instance.new("Part")
-    sign.Name = "ShopSign"
-    sign.Size = Vector3.new(16, 4, 1)
-    sign.Position = Vector3.new(50, 6, -8)
-    sign.Anchored = true
-    sign.Color = Color3.fromRGB(40, 40, 50)
-    sign.Material = Enum.Material.SmoothPlastic
-    sign.Parent = shopModel
-    
-    -- Sign text (using surface gui would be better, but using part color for now)
-    print("✅ Egg Shop Model Created")
 end
 
-function EggShop:CreateEggDisplay(eggType, position, color, parent)
-    local eggConfig = EGG_TYPES[eggType]
+function EggShop:OpenEgg(player, eggType)
+    local config = EGG_TYPES[eggType]
+    if not config or not rollService then return end
     
-    -- Egg pedestal
-    local pedestal = Instance.new("Part")
-    pedestal.Name = eggType .. "Pedestal"
-    pedestal.Size = Vector3.new(4, 2, 4)
-    pedestal.Position = position - Vector3.new(0, 2, 0)
-    pedestal.Anchored = true
-    pedestal.Color = Color3.fromRGB(40, 40, 50)
-    pedestal.Material = Enum.Material.SmoothPlastic
-    pedestal.Parent = parent
-    
-    -- The egg
-    local egg = Instance.new("Part")
-    egg.Name = eggType .. "Egg"
-    egg.Size = Vector3.new(3, 4, 3)
-    egg.Shape = Enum.PartType.Ball
-    egg.Position = position
-    egg.Anchored = true
-    egg.Color = color
-    egg.Material = Enum.Material.Neon
-    egg.Parent = parent
-    
-    -- Click detector for interaction
-    local clickDetector = Instance.new("ClickDetector")
-    clickDetector.MaxActivationDistance = 20
-    clickDetector.Parent = egg
-    
-    clickDetector.MouseClick:Connect(function(player)
-        self:PromptOpenEgg(player, eggType)
-    end)
-    
-    -- Floating animation
-    task.spawn(function()
-        while egg.Parent do
-            local startY = position.Y
-            for i = 0, 360, 5 do
-                if not egg.Parent then break end
-                egg.Position = Vector3.new(position.X, startY + (math.sin(math.rad(i)) * 0.5), position.Z)
-                egg.Rotation = Vector3.new(0, i, 0)
-                task.wait(0.05)
-            end
-        end
-    end)
-    
-    -- Interaction: ProximityPrompt
-    local prompt = Instance.new("ProximityPrompt")
-    prompt.ObjectText = eggConfig.name
-    prompt.ActionText = string.format("Open (%d Gems)", eggConfig.cost)
-    prompt.KeyboardKeyCode = Enum.KeyCode.E
-    prompt.HoldDuration = 0.5
-    prompt.MaxActivationDistance = 10
-    prompt.Parent = egg
-    
-    prompt.Triggered:Connect(function(player)
-        self:OpenEgg(player, eggType)
-    end)
-
-    -- Price label part (BillboardGui is better for text)
-    local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(0, 200, 0, 50)
-    billboard.AlwaysOnTop = true
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.Parent = egg
-
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = string.format("💎 %d\n[E] TO OPEN", eggConfig.cost)
-    label.TextColor3 = color
-    label.TextStrokeTransparency = 0
-    label.Font = Enum.Font.GothamBlack
-    label.TextSize = 14
-    label.Parent = billboard
-end
-
--- Prompt player to open egg
-function EggShop:PromptOpenEgg(player, eggType)
-    local eggConfig = EGG_TYPES[eggType]
-    if not eggConfig then return end
-    
-    -- Check if player has enough gems
-    local pd = rollService and rollService.playerData[player.UserId]
-    if not pd then return end
-    
-    if pd.gems < eggConfig.cost then
-        EggEvent:FireClient(player, "ERROR", string.format("Need %d gems!", eggConfig.cost))
+    local pd = rollService.playerData[player.UserId]
+    if not pd or pd.gems < config.cost then
+        EggEvent:FireClient(player, "ERROR", "Not enough gems!")
         return
     end
     
-    -- Confirm opening
-    EggEvent:FireClient(player, "CONFIRM_OPEN", {
-        eggType = eggType,
-        cost = eggConfig.cost,
-        eggName = eggConfig.name
-    })
-end
-
--- Open egg and give pet
-function EggShop:OpenEgg(player, eggType)
-    local eggConfig = EGG_TYPES[eggType]
-    if not eggConfig then return nil end
+    pd.gems = pd.gems - config.cost
     
-    -- Check gems again
-    local pd = rollService and rollService.playerData[player.UserId]
-    if not pd then return nil end
-    
-    if pd.gems < eggConfig.cost then
-        return nil
-    end
-    
-    -- Deduct gems
-    pd.gems = pd.gems - eggConfig.cost
-    
-    -- Roll for pet
     local roll = math.random()
     local cumulative = 0
-    local wonPet = nil
-    
-    for _, drop in ipairs(eggConfig.drops) do
+    local wonPetId = config.drops[1].petId
+    for _, drop in ipairs(config.drops) do
         cumulative = cumulative + drop.chance
         if roll <= cumulative then
-            wonPet = drop.petId
+            wonPetId = drop.petId
             break
         end
     end
     
-    -- Fallback to first drop
-    if not wonPet then
-        wonPet = eggConfig.drops[1].petId
-    end
-    
-    -- Find pet config
     local petConfig = nil
-    for _, pet in ipairs(Config.PETS) do
-        if pet.id == wonPet then
-            petConfig = pet
-            break
-        end
+    for _, p in ipairs(Config.PETS) do
+        if p.id == wonPetId then petConfig = p ; break end
     end
     
-    if petConfig then
-        -- Add pet to inventory
-        if not pd.pets then pd.pets = {} end
-        table.insert(pd.pets, wonPet)
-        
-        -- Notify client
-        EggEvent:FireClient(player, "EGG_OPENED", {
-            pet = petConfig,
-            eggType = eggType
-        })
-        
-        -- Sync data
-        if rollService then
-            rollService:SyncData(player)
-        end
-        
-        print(string.format("🥚 %s opened %s and got %s!", player.Name, eggConfig.name, petConfig.name))
-        
-        return petConfig
-    end
-    
-    return nil
+    table.insert(pd.pets, wonPetId)
+    rollService:SyncData(player)
+    EggEvent:FireClient(player, "EGG_OPENED", { pet = petConfig, eggType = eggType })
+    print("🥚 "..player.Name.." got "..petConfig.name)
 end
 
--- Handle client events
-EggEvent.OnServerEvent:Connect(function(player, action, data)
-    if action == "OPEN_EGG" then
-        EggShop:OpenEgg(player, data)
-    elseif action == "GET_EGG_TYPES" then
-        EggEvent:FireClient(player, "EGG_TYPES", EGG_TYPES)
-    end
-end)
-
--- Initialize
 function EggShop:Init()
+    print("🚀 [EggShop] Pure Module Initialization")
+    
+    local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+    EggEvent = Remotes:WaitForChild("EggEvent")
+    
     self:CreateShopModel()
-    print("✅ Egg Shop Initialized")
+    
+    EggEvent.OnServerEvent:Connect(function(p, action, data)
+        if action == "OPEN_EGG" then self:OpenEgg(p, data)
+        elseif action == "GET_EGG_TYPES" then EggEvent:FireClient(p, "EGG_TYPES", EGG_TYPES) end
+    end)
+    print("✅ EggShop Ready")
 end
 
-EggShop:Init()
 return EggShop
