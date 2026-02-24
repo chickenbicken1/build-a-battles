@@ -1,4 +1,3 @@
-```lua
 -- TestSuites.lua
 -- Contains the actual test logic for various modules
 

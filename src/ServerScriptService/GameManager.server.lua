@@ -1,4 +1,3 @@
-```lua
 -- GameManager - Orchestrates service initialization and dependencies
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

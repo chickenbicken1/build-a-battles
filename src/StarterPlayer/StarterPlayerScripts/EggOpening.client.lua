@@ -6,7 +6,7 @@ local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
-local gui = player:WaitForChild("PlayerGui"):WaitForChild("MainGui")
+local gui = player:WaitForChild("PlayerGui"):WaitForChild("HUDGUI")
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local EggEvent = Remotes:WaitForChild("EggEvent")
 
