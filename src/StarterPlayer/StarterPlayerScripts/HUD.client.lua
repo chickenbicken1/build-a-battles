@@ -296,34 +296,25 @@ Instance.new("UITextSizeConstraint", powerLabel).MaxTextSize = 18
 local luckLabel = MkLabel({
     Name = "LuckLabel",
     Size = UDim2.new(1, 0, 0, 18),
-    Text = "LUCK: 1.00x",
+    Text = "LUCK: 1x",
     TextColor3 = T.green,
     TextXAlignment = Enum.TextXAlignment.Left,
     ZIndex = 26, Parent = statsPanel,
 })
 Instance.new("UITextSizeConstraint", luckLabel).MaxTextSize = 14
 
--- ── Gems Display (Simplified Top Right) ──────────────────────────────────
-local gemsGui = MkFrame({
-    Name = "GemsGui",
-    Size = UDim2.new(0, 120, 0, 36),
-    Position = UDim2.new(1, -10, 0, 10),
-    AnchorPoint = Vector2.new(1, 0),
-    BackgroundColor3 = T.panel,
-    ZIndex = 30,
-    Parent = gui,
-})
-RC(gemsGui, 10) ; STK(gemsGui, T.gold)
-
-local gemsLbl = MkLabel({
-    Name = "GemsLabel",
-    Size = UDim2.fromScale(1, 1),
-    Text = "💎 9,999",
+local gemsLabelTop = MkLabel({
+    Name = "GemsLabelTop",
+    Size = UDim2.new(1, 0, 0, 18),
+    Text = "GEMS: 0",
     TextColor3 = T.gold,
-    Font = Enum.Font.GothamBlack,
-    Parent = gemsGui,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 26, Parent = statsPanel,
 })
-Instance.new("UITextSizeConstraint", gemsLbl).MaxTextSize = 18
+Instance.new("UITextSizeConstraint", gemsLabelTop).MaxTextSize = 14
+
+-- ── Gems Display (Top Right - DELETED in favor of Top Left) ────────────────
+-- (Removed gemsGui block to reduce clutter)
 
 -- ── Roll Panel (bottom-center, always visible) ────────────────────────────
 local rollPanel = MkFrame({
@@ -1057,7 +1048,7 @@ local function UpdateStats(d)
     if d.gems then 
         St.gems = d.gems
         if lblGems then lblGems.Text = "💎 "..Utils.FormatNumber(d.gems) end
-        if gemsLbl then gemsLbl.Text = "💎 " .. Utils.FormatNumber(d.gems) end
+        if gemsLabelTop then gemsLabelTop.Text = "GEMS: "..Utils.FormatNumber(d.gems) end
     end
     
     if d.equippedAura then

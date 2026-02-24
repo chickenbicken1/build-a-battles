@@ -8,14 +8,8 @@ local Utils = require(Shared:WaitForChild("Utils"))
 
 -- We look for the actual services (requires them being required by GameManager first)
 local ServerScriptService = game:GetService("ServerScriptService")
-local RollService = nil
-local EggShop = nil
-
--- Wait for services to be available
-task.spawn(function()
-	local successRole = pcall(function() RollService = require(ServerScriptService:WaitForChild("RollService")) end)
-	local successEgg = pcall(function() EggShop = require(ServerScriptService:WaitForChild("EggShop")) end)
-end)
+local RollService = require(ServerScriptService:WaitForChild("RollService"))
+local EggShop = require(ServerScriptService:WaitForChild("EggShop"))
 
 local TestSuites = {}
 
