@@ -8,8 +8,21 @@ local Utils = require(Shared:WaitForChild("Utils"))
 
 -- We look for the actual services (requires them being required by GameManager first)
 local ServerScriptService = game:GetService("ServerScriptService")
-local RollService = require(ServerScriptService:WaitForChild("RollService"))
-local EggShop = require(ServerScriptService:WaitForChild("EggShop"))
+
+local function RobustRequire(name)
+    local obj = ServerScriptService:WaitForChild(name, 5)
+    if not obj then return nil, "Timeout waiting for " .. name end
+    if not obj:IsA("ModuleScript") then return nil, name .. " is not a ModuleScript (" .. obj.ClassName .. ")" end
+    local success, result = pcall(require, obj)
+    if not success then return nil, "Error requiring " .. name .. ": " .. tostring(result) end
+    return result
+end
+
+local RollService, errR = RobustRequire("RollService")
+local EggShop, errE = RobustRequire("EggShop")
+
+if errR then warn("⚠️ TestSuites: " .. errR) end
+if errE then warn("⚠️ TestSuites: " .. errE) end
 
 local TestSuites = {}
 

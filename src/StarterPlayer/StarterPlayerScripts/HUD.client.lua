@@ -259,7 +259,7 @@ RC(sidePanel, 14) ; STK(sidePanel)
 -- ── Top-Left Player Stats (Power & Luck) ──────────────────────────────────
 local statsPanel = MkFrame({
     Name = "TopStats",
-    Size = UDim2.new(0.2, 0, 0, 80),
+    Size = UDim2.new(0, 180, 0, 110), -- Increased height to 110
     Position = UDim2.new(0, 10, 0, 10),
     BackgroundColor3 = T.panel,
     BackgroundTransparency = 0.1,
@@ -1045,7 +1045,7 @@ local function UpdateStats(d)
         lblLuck.Text = "🍀 "..Utils.FormatLuck(d.totalLuck)
     end
     if d.rollCount then St.rolls = d.rollCount ; lblRolls.Text = "🎲 "..Utils.FormatNumber(d.rollCount) end
-    if d.gems then 
+    if d.gems ~= nil then 
         St.gems = d.gems
         if lblGems then lblGems.Text = "💎 "..Utils.FormatNumber(d.gems) end
         if gemsLabelTop then gemsLabelTop.Text = "GEMS: "..Utils.FormatNumber(d.gems) end
