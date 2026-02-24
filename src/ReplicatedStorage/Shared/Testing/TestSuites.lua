@@ -1,16 +1,27 @@
+```lua
 -- TestSuites.lua
 -- Contains the actual test logic for various modules
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
+
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+-- HUD.client.lua creates HUDGUI
+local gui = PlayerGui:WaitForChild("HUDGUI", 15)
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local EggEvent = Remotes:WaitForChild("EggEvent")
 local Utils = require(Shared:WaitForChild("Utils"))
 
 -- We look for the actual services (requires them being required by GameManager first)
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local function RobustRequire(name)
-    local obj = ServerScriptService:WaitForChild(name, 5)
+    local Core = ServerScriptService:WaitForChild("Core", 5)
+    if not Core then return nil, "Timeout waiting for Core folder" end
+    local obj = Core:WaitForChild(name, 5)
     if not obj then return nil, "Timeout waiting for " .. name end
     if not obj:IsA("ModuleScript") then return nil, name .. " is not a ModuleScript (" .. obj.ClassName .. ")" end
     local success, result = pcall(require, obj)

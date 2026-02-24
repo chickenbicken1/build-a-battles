@@ -1,3 +1,4 @@
+```lua
 -- GameManager - Orchestrates service initialization and dependencies
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,8 +29,9 @@ InitRemote("EggEvent")
 InitRemote("ShopEvent")
 
 -- ── 2. Require and Initialize Pure Modules ──────────────────────────────────
-local RollService = require(ServerScriptService:WaitForChild("RollService"))
-local EggShop = require(ServerScriptService:WaitForChild("EggShop"))
+local Core = ServerScriptService:WaitForChild("Core")
+local RollService = require(Core:WaitForChild("RollService"))
+local EggShop = require(Core:WaitForChild("EggShop"))
 
 -- Wire dependencies
 EggShop:SetRollService(RollService)
