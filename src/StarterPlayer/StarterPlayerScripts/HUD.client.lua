@@ -1,4 +1,5 @@
 -- HUD.client.lua  ·  Unified Responsive Aura Roller Interface
+print("🖥️ [HUD] ACTIVATED - Syncing version: "..tick())
 -- Replaces: RollController, InventoryUI, PetUI
 -- Layout: Scale-based UDim2 throughout for full screen-size independence
 
@@ -368,8 +369,9 @@ local slotLabel = MkLabel({
     Name = "SlotLabel",
     Size = UDim2.fromScale(1, 1),
     Text = "Press R to roll!",
-    TextColor3 = T.gray,
+    TextColor3 = T.white,
     Font = Enum.Font.GothamBlack,
+    ZIndex = 32,
     Parent = slotFrame,
 })
 Instance.new("UITextSizeConstraint", slotLabel).MaxTextSize = 28
@@ -1046,20 +1048,9 @@ local function UpdateStats(d)
 end
 
 local function RevealResult(aura)
-    local rc = Config.RARITIES[aura.rarity] or {}
-    local rarityIdx = RARITY_ORDER[aura.rarity] or 1
-    local col = rc.color or T.white
-
-    slotLabel.Text       = aura.name
+    local col = Config.RARITIES[aura.rarity].color or T.white
+    slotLabel.Text = aura.name
     slotLabel.TextColor3 = col
-
-    local sf = slotFrame:FindFirstChildOfClass("UIStroke")
-    if sf then TweenService:Create(sf, TweenInfo.new(0.25), {Color=col, Thickness=2.5}):Play() end
-
-    -- Punch scale
-    TweenService:Create(slotFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(1,0,0.36,0)
-    }):Play()
     task.delay(0.5, function()
         TweenService:Create(slotFrame, TweenInfo.new(0.15), {Size=UDim2.new(1,0,0.32,0)}):Play()
     end)
