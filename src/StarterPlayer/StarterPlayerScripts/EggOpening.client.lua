@@ -154,6 +154,9 @@ function EggOpening:CreateUI()
     uiElements.resultFrame = resultFrame
     
     -- Result Title
+    local resultTitle = Instance.new("TextLabel")
+    resultTitle.Size = UDim2.new(1, 0, 0, 50)
+    resultTitle.BackgroundTransparency = 1
     resultTitle.Text = "🎉 YOU REVEALED!"
     resultTitle.TextColor3 = C.success
     resultTitle.TextSize = 28

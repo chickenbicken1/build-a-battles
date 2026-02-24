@@ -1049,18 +1049,18 @@ end
 -- ROLL LOGIC
 -- ════════════════════════════════════════════════════════════════════════════
 local function UpdateStats(d)
-    if d.totalLuck  then 
+    if d.totalLuck then 
         St.luck = d.totalLuck  
         lblLuck.Text = "🍀 "..Utils.FormatLuck(d.totalLuck)
-        if powerLabel then powerLabel.Text = "LUCK: "..Utils.FormatLuck(d.totalLuck) end
     end
-    if d.rollCount  then St.rolls = d.rollCount ; lblRolls.Text = "🎲 "..Utils.FormatNumber(d.rollCount) end
-    if d.gems       then St.gems  = d.gems  ; lblGems.Text = "💎 "..Utils.FormatNumber(d.gems) end
+    if d.rollCount then St.rolls = d.rollCount ; lblRolls.Text = "🎲 "..Utils.FormatNumber(d.rollCount) end
+    if d.gems then 
+        St.gems = d.gems
+        if lblGems then lblGems.Text = "💎 "..Utils.FormatNumber(d.gems) end
+        if gemsLbl then gemsLbl.Text = "💎 " .. Utils.FormatNumber(d.gems) end
+    end
     
-    if gemsLbl then gemsLbl.Text = "💎 " .. Utils.FormatNumber(d.gems or St.gems or 0) end
-
     if d.equippedAura then
-        -- Find aura info
         local auraId = (type(d.equippedAura) == "table") and d.equippedAura.id or d.equippedAura
         local auraInfo = nil
         for _, a in ipairs(Config.AURAS) do
@@ -1073,11 +1073,9 @@ local function UpdateStats(d)
             eqNameLbl.Text = string.format("%s [%d]", auraInfo.name, auraInfo.power or 10)
             eqNameLbl.TextColor3 = rc and rc.color or T.white
             
-            if eqNameLabel then -- Top panel
-                eqNameLabel.Text = auraInfo.name
-                eqNameLabel.TextColor3 = rc and rc.color or T.white
-                if powerLabel then powerLabel.Text = "POWER: "..Utils.FormatNumber(auraInfo.power or 10) end
-            end
+            -- Top stat panel update
+            if eqNameLabel then eqNameLabel.Text = auraInfo.name ; eqNameLabel.TextColor3 = rc and rc.color or T.white end
+            if powerLabel then powerLabel.Text = "POWER: "..Utils.FormatNumber(auraInfo.power or 10) end
         end
     end
     
@@ -1087,6 +1085,7 @@ local function UpdateStats(d)
 end
 
 local function RevealResult(aura)
+    local rarityIdx = RARITY_ORDER[aura.rarity] or 8
     local col = Config.RARITIES[aura.rarity].color or T.white
     slotLabel.Text = string.format("%s [%d]", aura.name, aura.power or 10)
     slotLabel.TextColor3 = col
